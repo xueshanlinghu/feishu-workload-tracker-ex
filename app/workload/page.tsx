@@ -214,6 +214,13 @@ export default function WorkloadPage() {
 
       if (!res.ok) {
         const data = await res.json();
+        // 在development模式显示详细错误
+        if (process.env.NODE_ENV === 'development') {
+          const detailedError = data.details ?
+            `${data.error}\n\n详细信息：\n${JSON.stringify(data.details, null, 2)}` :
+            data.error || '提交失败';
+          throw new Error(detailedError);
+        }
         throw new Error(data.error || '提交失败');
       }
 
@@ -256,10 +263,17 @@ export default function WorkloadPage() {
 
   // 生成Emoji表情
   const getWorkloadEmojis = (workload: number): string => {
+    // 如果工作负载为0，不显示任何表情
+    if (workload === 0) {
+      return '';
+    }
+
     // 限制工作负载在 0-1 范围内显示
     const clampedWorkload = Math.max(0, Math.min(1, workload));
     const filled = Math.round(clampedWorkload * 10);
-    return '😊'.repeat(filled) + '😐'.repeat(10 - filled);
+
+    // 只显示填充的表情，不显示空表情
+    return '😄'.repeat(filled);
   };
 
   if (isLoading) {
@@ -353,12 +367,12 @@ export default function WorkloadPage() {
                   className="flex items-center justify-between p-3 bg-gray-50 rounded"
                 >
                   <div className="flex-1">
-                    <span className="font-medium">{record.task}</span>
+                    <span className="font-medium">{record.task || '未命名任务'}</span>
                   </div>
                   <div className="flex items-center space-x-4">
-                    <span className="text-sm">{getWorkloadEmojis(record.workload)}</span>
+                    <span className="text-sm">{getWorkloadEmojis(record.workload || 0)}</span>
                     <span className="font-semibold text-blue-600">
-                      {record.workload.toFixed(1)}
+                      {(record.workload || 0).toFixed(1)}
                     </span>
                   </div>
                 </div>

@@ -46,20 +46,33 @@ export async function GET(request: NextRequest) {
     // 查询记录
     const records = await queryRecordsByDateAndPerson(date, personId);
 
+    console.log(`[Records API] Found ${records.length} records for date ${date}, person ${personId}`);
+    if (records.length > 0) {
+      console.log('[Records API] First record fields:', JSON.stringify(records[0].fields, null, 2));
+    }
+
     // 计算总人力占用
+    // 使用"人力占用计算"公式字段而不是"人力占用"字段
     const totalWorkload = records.reduce((sum, record) => {
-      const workload = (record.fields['人力占用'] as number) || 0;
+      const workloadCalc = record.fields['人力占用计算'] as any;
+      // 公式字段格式: { type: 2, value: [0.3] }
+      const workload = (workloadCalc?.value?.[0] as number) || 0;
       return sum + workload;
     }, 0);
 
     // 格式化记录数据
-    const formattedRecords = records.map((record) => ({
-      id: record.record_id,
-      task: record.fields['事项'] as string,
-      workload: record.fields['人力占用'] as number,
-      status: record.fields['记录状态'] as string,
-      createdTime: record.created_time,
-    }));
+    const formattedRecords = records.map((record) => {
+      const workloadCalc = record.fields['人力占用计算'] as any;
+      const workload = (workloadCalc?.value?.[0] as number) || 0;
+
+      return {
+        id: record.record_id,
+        task: record.fields['事项'] as string || '未命名任务',
+        workload: workload,
+        status: record.fields['记录状态'] as string || '未发周报',
+        createdTime: record.created_time,
+      };
+    });
 
     return NextResponse.json({
       records: formattedRecords,
@@ -130,7 +143,10 @@ export async function POST(request: NextRequest) {
     // 查询该日期已有的记录，检查总人力是否会超限
     const existingRecords = await queryRecordsByDateAndPerson(date, personId);
     const existingTotal = existingRecords.reduce((sum, record) => {
-      return sum + ((record.fields['人力占用'] as number) || 0);
+      const workloadCalc = record.fields['人力占用计算'] as any;
+      // 公式字段格式: { type: 2, value: [0.3] }
+      const workload = (workloadCalc?.value?.[0] as number) || 0;
+      return sum + workload;
     }, 0);
 
     const newTotal = records.reduce((sum: number, r: { workload: number }) => {
@@ -156,13 +172,18 @@ export async function POST(request: NextRequest) {
     const bitableRecords: BitableRecord[] = records.map((record: { task: string; workload: number }) => ({
       fields: {
         记录日期: dateTimestamp,
-        记录人员: personId,
+        // 人员字段必须是对象数组格式 [{ id: "open_id" }]
+        记录人员: [{ id: personId }],
         事项: record.task,
-        人力占用: record.workload,
+        // 人力占用字段存储整数（0.1存为1，0.3存为3）
+        人力占用: Math.round(record.workload * 10),
         记录状态: '未发周报',
-        创建人: currentUser.userId,
+        // 创建人字段也是人员类型，需要对象数组格式，使用openId
+        创建人: [{ id: currentUser.openId }],
       },
     }));
+
+    console.log('[Records API] Creating records:', JSON.stringify(bitableRecords, null, 2));
 
     // 批量创建记录
     const result = await createRecords(bitableRecords);
@@ -175,6 +196,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Records API POST] Error:', error);
+
+    // 在development模式返回详细错误
+    if (process.env.NODE_ENV === 'development' && error instanceof Error) {
+      return NextResponse.json(
+        {
+          error: '创建记录失败',
+          details: {
+            message: error.message,
+            // 如果是飞书API错误，包含更多信息
+            ...(error as any).response?.data,
+          }
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: '创建记录失败' },
       { status: 500 }
