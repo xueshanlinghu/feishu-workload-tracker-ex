@@ -52,18 +52,31 @@ export async function GET(request: NextRequest) {
     }
 
     // 计算总人力占用
-    // 使用"人力占用计算"公式字段而不是"人力占用"字段
+    // 优先使用"人力占用计算"公式字段，如果为0则fallback到"人力占用"整数字段除以10
     const totalWorkload = records.reduce((sum, record) => {
       const workloadCalc = record.fields['人力占用计算'] as any;
       // 公式字段格式: { type: 2, value: [0.3] }
-      const workload = (workloadCalc?.value?.[0] as number) || 0;
+      let workload = (workloadCalc?.value?.[0] as number) || 0;
+
+      // 如果公式字段为0，尝试使用"人力占用"整数字段（需要除以10）
+      if (workload === 0) {
+        const workloadInt = (record.fields['人力占用'] as number) || 0;
+        workload = workloadInt / 10;
+      }
+
       return sum + workload;
     }, 0);
 
     // 格式化记录数据
     const formattedRecords = records.map((record) => {
       const workloadCalc = record.fields['人力占用计算'] as any;
-      const workload = (workloadCalc?.value?.[0] as number) || 0;
+      let workload = (workloadCalc?.value?.[0] as number) || 0;
+
+      // 如果公式字段为0，尝试使用"人力占用"整数字段（需要除以10）
+      if (workload === 0) {
+        const workloadInt = (record.fields['人力占用'] as number) || 0;
+        workload = workloadInt / 10;
+      }
 
       return {
         id: record.record_id,
@@ -145,7 +158,14 @@ export async function POST(request: NextRequest) {
     const existingTotal = existingRecords.reduce((sum, record) => {
       const workloadCalc = record.fields['人力占用计算'] as any;
       // 公式字段格式: { type: 2, value: [0.3] }
-      const workload = (workloadCalc?.value?.[0] as number) || 0;
+      let workload = (workloadCalc?.value?.[0] as number) || 0;
+
+      // 如果公式字段为0，尝试使用"人力占用"整数字段（需要除以10）
+      if (workload === 0) {
+        const workloadInt = (record.fields['人力占用'] as number) || 0;
+        workload = workloadInt / 10;
+      }
+
       return sum + workload;
     }, 0);
 
