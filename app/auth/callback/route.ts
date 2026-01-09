@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       openId: userInfo.open_id,
       name: userInfo.name,
       email: userInfo.email,
-      avatar: userInfo.avatar_url || userInfo.avatar?.avatar_240 || userInfo.avatar?.avatar_origin,
+      avatar: userInfo.avatar?.avatar_240 || userInfo.avatar?.avatar_origin || '',
       userAccessToken: access_token,
       refreshToken: refresh_token,
       expiresIn: expires_in,
