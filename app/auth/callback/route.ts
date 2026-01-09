@@ -54,12 +54,15 @@ export async function GET(request: NextRequest) {
     });
 
     // 5. 重定向到工作负载记录页面
-    return NextResponse.redirect(new URL('/workload', request.url));
+    // 使用NEXTAUTH_URL环境变量构建正确的重定向地址
+    const baseUrl = process.env.NEXTAUTH_URL || request.url;
+    return NextResponse.redirect(new URL('/workload', baseUrl));
   } catch (error) {
     console.error('[OAuth] Callback error:', error);
 
     // 登录失败，重定向到登录页面并显示错误
-    const loginUrl = new URL('/login', request.url);
+    const baseUrl = process.env.NEXTAUTH_URL || request.url;
+    const loginUrl = new URL('/login', baseUrl);
 
     // 开发环境显示详细错误，生产环境显示简短提示
     const isDev = process.env.NODE_ENV === 'development';
