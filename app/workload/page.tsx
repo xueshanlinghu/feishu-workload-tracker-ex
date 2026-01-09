@@ -518,7 +518,7 @@ export default function WorkloadPage() {
 
           {newRecords.length === 0 ? (
             <p className="text-gray-500 text-center py-8">
-              点击"添加记录"按钮开始记录工作
+              点击&ldquo;添加记录&rdquo;按钮开始记录工作
             </p>
           ) : (
             <div className="space-y-4">
