@@ -1,3 +1,4 @@
+name: feishu-workload-tracker
 version: '3.8'
 
 services:
