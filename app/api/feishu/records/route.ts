@@ -3,12 +3,15 @@
  *
  * GET /api/feishu/records - 查询记录
  * POST /api/feishu/records - 创建记录
+ * PATCH /api/feishu/records - 更新记录
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  queryRecords,
   queryRecordsByDateAndPerson,
   createRecords,
+  updateRecord,
 } from '@/lib/feishu/bitable';
 import { isSessionValid, getCurrentUser } from '@/lib/session';
 import { BitableRecord, WorkloadRecord } from '@/types/feishu';
@@ -234,6 +237,162 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { error: '创建记录失败' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH - 更新记录
+ *
+ * Body:
+ * {
+ *   recordId: "record_id",
+ *   workload: 0.3
+ * }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    // 检查用户是否已登录
+    const valid = await isSessionValid();
+    if (!valid) {
+      return NextResponse.json(
+        { error: '未登录或会话已过期' },
+        { status: 401 }
+      );
+    }
+
+    // 解析请求体
+    const body = await request.json();
+    const { recordId, workload } = body;
+
+    if (!recordId) {
+      return NextResponse.json(
+        { error: '缺少记录ID' },
+        { status: 400 }
+      );
+    }
+
+    if (typeof workload !== 'number' || workload < 0 || workload > 1) {
+      return NextResponse.json(
+        { error: '人力占用值必须在 0-1 之间' },
+        { status: 400 }
+      );
+    }
+
+    // 查询该记录的日期和人员，用于验证总人力
+    const allRecords = await queryRecords(undefined, undefined, { page_size: 500 });
+    const targetRecord = allRecords.items?.find((r: BitableRecord) => r.record_id === recordId);
+
+    console.log('[Records API PATCH] targetRecord:', targetRecord ? {
+      record_id: targetRecord.record_id,
+      事项: targetRecord.fields['事项'],
+      人力占用: targetRecord.fields['人力占用'],
+      人力占用计算: targetRecord.fields['人力占用计算'],
+    } : null);
+
+    if (!targetRecord) {
+      return NextResponse.json(
+        { error: '记录不存在' },
+        { status: 404 }
+      );
+    }
+
+    const recordDate = targetRecord.fields['记录日期'] as number;
+    const recordPerson = targetRecord.fields['记录人员'] as any;
+
+    // 获取日期字符串（注意：需要处理时区问题，toISOString返回UTC时间）
+    // 飞书存储的是本地时间戳，而toISOString返回UTC时间，需要补偿时区偏移
+    const dateObj = new Date(recordDate);
+    // 获取时区偏移（分钟），转换为毫秒
+    const timezoneOffset = dateObj.getTimezoneOffset() * 60 * 1000;
+    // 减去时区偏移，得到本地时间的UTC时间戳
+    const localTimestamp = recordDate - timezoneOffset;
+    const dateStr = new Date(localTimestamp).toISOString().split('T')[0];
+
+    // 获取人员ID
+    const personId = Array.isArray(recordPerson) && recordPerson.length > 0
+      ? recordPerson[0].id
+      : null;
+
+    console.log('[Records API PATCH] date:', dateStr, 'personId:', personId, 'newWorkload:', workload, 'original timestamp:', recordDate);
+
+    if (!personId) {
+      return NextResponse.json(
+        { error: '无法获取记录人员信息' },
+        { status: 400 }
+      );
+    }
+
+    // 查询该日期该人员的所有记录
+    const personRecords = await queryRecordsByDateAndPerson(dateStr, personId);
+
+    console.log('[Records API PATCH] personRecords count:', personRecords.length);
+    console.log('[Records API PATCH] personRecords:', personRecords.map(r => ({
+      id: r.record_id,
+      事项: r.fields['事项'],
+      人力占用: r.fields['人力占用'],
+      人力占用计算: r.fields['人力占用计算'],
+      记录日期: r.fields['记录日期'],
+    })));
+
+    // 计算除当前记录外的总人力
+    const existingTotal = personRecords
+      .filter((r) => r.record_id !== recordId)
+      .reduce((sum, record) => {
+        const workloadCalc = record.fields['人力占用计算'] as any;
+        let w = (workloadCalc?.value?.[0] as number) || 0;
+
+        if (w === 0) {
+          const workloadInt = (record.fields['人力占用'] as number) || 0;
+          w = workloadInt / 10;
+        }
+
+        console.log('[Records API PATCH] record:', record.fields['事项'], 'workload:', w);
+        return sum + w;
+      }, 0);
+
+    console.log('[Records API PATCH] existingTotal (excluding current):', existingTotal, 'newWorkload:', workload, 'total:', existingTotal + workload);
+
+    // 验证更新后的总人力不超过1.0
+    if (existingTotal + workload > 1.0) {
+      return NextResponse.json(
+        {
+          error: '总人力占用超出限制',
+          detail: `该日期其他记录占用 ${existingTotal.toFixed(1)}，更新后将达到 ${(existingTotal + workload).toFixed(1)} > 1.0`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 更新记录
+    const updated = await updateRecord(recordId, {
+      人力占用: Math.round(workload * 10),
+    });
+
+    return NextResponse.json({
+      success: true,
+      record: updated,
+      message: '记录更新成功',
+    });
+  } catch (error) {
+    console.error('[Records API PATCH] Error:', error);
+
+    if (process.env.NODE_ENV === 'development' && error instanceof Error) {
+      return NextResponse.json(
+        {
+          error: '更新记录失败',
+          details: {
+            message: error.message,
+            ...(error as any).response?.data,
+          }
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: '更新记录失败' },
       { status: 500 }
     );
   }

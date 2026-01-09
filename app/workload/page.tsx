@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import WorkloadSelector from './WorkloadSelector';
+import EditRecordModal from './EditRecordModal';
 
 interface User {
   userId: string;    // user_id
@@ -57,6 +58,8 @@ export default function WorkloadPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+  const [editingRecord, setEditingRecord] = useState<Record | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // 成功提示3秒后自动消失
   useEffect(() => {
@@ -296,6 +299,51 @@ export default function WorkloadPage() {
     }
   };
 
+  // 打开编辑弹窗
+  const openEditModal = (record: Record) => {
+    setEditingRecord(record);
+    setIsEditModalOpen(true);
+    setError(''); // 清除之前的错误
+  };
+
+  // 关闭编辑弹窗
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditingRecord(null);
+  };
+
+  // 编辑成功
+  const handleEditSuccess = async () => {
+    setSuccess('记录更新成功！');
+
+    // 等待飞书服务器同步数据（延迟2秒）
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 刷新已有记录
+    setIsFetchingRecords(true);
+    const refreshRes = await fetch(
+      `/api/feishu/records?date=${selectedDate}&person=${selectedPerson}`
+    );
+
+    if (refreshRes.status === 401) {
+      setIsFetchingRecords(false);
+      router.push('/login');
+      return;
+    }
+
+    if (refreshRes.ok) {
+      const data = await refreshRes.json();
+      setExistingRecords(data.records);
+      setExistingTotal(data.total);
+    }
+    setIsFetchingRecords(false);
+  };
+
+  // 编辑失败
+  const handleEditError = (errorMessage: string) => {
+    setError(errorMessage);
+  };
+
   // 生成Emoji表情
   const getWorkloadEmojis = (workload: number): string => {
     // 如果工作负载为0，不显示任何表情
@@ -473,16 +521,26 @@ export default function WorkloadPage() {
                 {existingRecords.map((record) => (
                   <div
                     key={record.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded"
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors group"
                   >
                     <div className="flex-1">
                       <span className="font-medium">{record.task || '未命名任务'}</span>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm">{getWorkloadEmojis(record.workload || 0)}</span>
-                      <span className="font-semibold text-blue-600">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-sm hidden sm:inline">{getWorkloadEmojis(record.workload || 0)}</span>
+                      <span className="font-semibold text-blue-600 min-w-[50px] text-right">
                         {(record.workload || 0).toFixed(1)}
                       </span>
+                      <button
+                        onClick={() => openEditModal(record)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors opacity-0 group-hover:opacity-100"
+                        aria-label="编辑"
+                        title="编辑"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -597,6 +655,15 @@ export default function WorkloadPage() {
           )}
         </div>
       </main>
+
+      {/* 编辑记录弹窗 */}
+      <EditRecordModal
+        isOpen={isEditModalOpen}
+        onClose={closeEditModal}
+        record={editingRecord}
+        onSuccess={handleEditSuccess}
+        onError={handleEditError}
+      />
     </div>
   );
 }
