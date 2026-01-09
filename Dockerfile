@@ -36,6 +36,10 @@ WORKDIR /app
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# 设置时区为上海时间（UTC+8）
+ENV TZ=Asia/Shanghai
+RUN apk add --no-cache tzdata
+
 # 创建非root用户
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
