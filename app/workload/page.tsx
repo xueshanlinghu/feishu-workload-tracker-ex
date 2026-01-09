@@ -52,6 +52,7 @@ export default function WorkloadPage() {
   const [existingTotal, setExistingTotal] = useState<number>(0);
   const [newRecords, setNewRecords] = useState<NewRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingRecords, setIsFetchingRecords] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -123,6 +124,8 @@ export default function WorkloadPage() {
 
     async function fetchRecords() {
       try {
+        setIsFetchingRecords(true);
+
         const res = await fetch(
           `/api/feishu/records?date=${selectedDate}&person=${selectedPerson}`
         );
@@ -144,6 +147,10 @@ export default function WorkloadPage() {
         }
       } catch (err) {
         console.error('Failed to fetch records:', err);
+        setExistingRecords([]);
+        setExistingTotal(0);
+      } finally {
+        setIsFetchingRecords(false);
       }
     }
 
@@ -228,6 +235,7 @@ export default function WorkloadPage() {
       setNewRecords([]);
 
       // 刷新已有记录
+      setIsFetchingRecords(true);
       const refreshRes = await fetch(
         `/api/feishu/records?date=${selectedDate}&person=${selectedPerson}`
       );
@@ -235,6 +243,7 @@ export default function WorkloadPage() {
       // 检查刷新请求的会话状态
       if (refreshRes.status === 401) {
         console.log('Session expired while refreshing, redirecting to login...');
+        setIsFetchingRecords(false);
         router.push('/login');
         return;
       }
@@ -244,8 +253,10 @@ export default function WorkloadPage() {
         setExistingRecords(data.records);
         setExistingTotal(data.total);
       }
+      setIsFetchingRecords(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '提交失败');
+      setIsFetchingRecords(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -357,37 +368,61 @@ export default function WorkloadPage() {
         </div>
 
         {/* 已有记录 */}
-        {existingRecords.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">已有记录</h2>
-            <div className="space-y-3">
-              {existingRecords.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded"
-                >
-                  <div className="flex-1">
-                    <span className="font-medium">{record.task || '未命名任务'}</span>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <span className="text-sm">{getWorkloadEmojis(record.workload || 0)}</span>
-                    <span className="font-semibold text-blue-600">
-                      {(record.workload || 0).toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-              ))}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">已有记录</h2>
+
+          {/* Loading状态 */}
+          {isFetchingRecords && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-gray-600">正在获取记录中...</p>
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-semibold">已占用人力：</span>
-                <span className="text-2xl font-bold text-blue-600">
-                  {existingTotal.toFixed(1)} / 1.0
-                </span>
+          )}
+
+          {/* 空记录状态 */}
+          {!isFetchingRecords && existingRecords.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="text-gray-400 mb-2">
+                <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
+              <p className="text-gray-500">当日记录为空</p>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* 有记录时显示列表 */}
+          {!isFetchingRecords && existingRecords.length > 0 && (
+            <>
+              <div className="space-y-3">
+                {existingRecords.map((record) => (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded"
+                  >
+                    <div className="flex-1">
+                      <span className="font-medium">{record.task || '未命名任务'}</span>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm">{getWorkloadEmojis(record.workload || 0)}</span>
+                      <span className="font-semibold text-blue-600">
+                        {(record.workload || 0).toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold">已占用人力：</span>
+                  <span className="text-2xl font-bold text-blue-600">
+                    {existingTotal.toFixed(1)} / 1.0
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* 新增记录 */}
         <div className="bg-white rounded-lg shadow p-6">
@@ -395,7 +430,12 @@ export default function WorkloadPage() {
             <h2 className="text-lg font-semibold">新增记录</h2>
             <button
               onClick={addNewRecord}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              disabled={isFetchingRecords}
+              className={`px-4 py-2 rounded-md ${
+                isFetchingRecords
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
             >
               + 添加记录
             </button>
@@ -470,7 +510,7 @@ export default function WorkloadPage() {
 
                 <button
                   onClick={handleSubmit}
-                  disabled={isSubmitting || finalTotal > 1.0 || newRecords.length === 0}
+                  disabled={isSubmitting || isFetchingRecords || finalTotal > 1.0 || newRecords.length === 0}
                   className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
                   {isSubmitting ? '提交中...' : '提交记录'}
