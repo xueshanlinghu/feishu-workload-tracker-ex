@@ -12,6 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import WorkloadSelector from './WorkloadSelector';
 
 interface User {
   userId: string;    // user_id
@@ -56,6 +57,26 @@ export default function WorkloadPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+
+  // 成功提示3秒后自动消失
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  // 手动关闭成功提示
+  const dismissSuccess = () => {
+    setSuccess('');
+  };
+
+  // 手动关闭错误提示
+  const dismissError = () => {
+    setError('');
+  };
 
   // 获取当前用户信息
   useEffect(() => {
@@ -159,7 +180,7 @@ export default function WorkloadPage() {
 
   // 添加新记录行
   const addNewRecord = () => {
-    setNewRecords([...newRecords, { task: '', workload: 0.1 }]);
+    setNewRecords([...newRecords, { task: '', workload: 0 }]);
   };
 
   // 移除记录行
@@ -177,6 +198,9 @@ export default function WorkloadPage() {
   // 计算新增总计
   const newTotal = newRecords.reduce((sum, r) => sum + r.workload, 0);
   const finalTotal = existingTotal + newTotal;
+
+  // 前端验证：检查是否有无效的记录（事项为空或人力为0）
+  const hasInvalidRecords = newRecords.some(r => !r.task || r.workload === 0);
 
   // 提交记录
   const handleSubmit = async () => {
@@ -323,13 +347,27 @@ export default function WorkloadPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* 消息提示 */}
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={dismissError}
+              className="ml-4 text-red-500 hover:text-red-700 focus:outline-none"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
           </div>
         )}
         {success && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
-            {success}
+          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded flex items-center justify-between">
+            <span>{success}</span>
+            <button
+              onClick={dismissSuccess}
+              className="ml-4 text-green-500 hover:text-green-700 focus:outline-none"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
           </div>
         )}
 
@@ -344,7 +382,8 @@ export default function WorkloadPage() {
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isFetchingRecords || isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -354,7 +393,8 @@ export default function WorkloadPage() {
               <select
                 value={selectedPerson}
                 onChange={(e) => setSelectedPerson(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isFetchingRecords || isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">-- 请选择 --</option>
                 {users.map((user) => (
@@ -369,7 +409,42 @@ export default function WorkloadPage() {
 
         {/* 已有记录 */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">已有记录</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">已有记录</h2>
+            <button
+              onClick={() => {
+                // 手动刷新记录
+                const date = selectedDate;
+                const person = selectedPerson;
+                if (date && person) {
+                  setIsFetchingRecords(true);
+                  fetch(`/api/feishu/records?date=${date}&person=${person}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      setExistingRecords(data.records || []);
+                      setExistingTotal(data.total || 0);
+                    })
+                    .catch(err => {
+                      console.error('Failed to refresh records:', err);
+                    })
+                    .finally(() => {
+                      setIsFetchingRecords(false);
+                    });
+                }
+              }}
+              disabled={isFetchingRecords}
+              className={`p-2 rounded-full transition-colors ${
+                isFetchingRecords
+                  ? 'text-gray-400 cursor-not-allowed'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+              aria-label="刷新记录"
+            >
+              <svg className={`w-5 h-5 ${isFetchingRecords ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
 
           {/* Loading状态 */}
           {isFetchingRecords && (
@@ -463,15 +538,11 @@ export default function WorkloadPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="w-48">
-                    <input
-                      type="number"
-                      min="0.1"
-                      max="1.0"
-                      step="0.1"
+                  <div className="w-auto">
+                    <WorkloadSelector
                       value={record.workload}
-                      onChange={(e) => updateRecord(index, 'workload', parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(newValue) => updateRecord(index, 'workload', newValue)}
+                      disabled={isFetchingRecords || isSubmitting}
                     />
                   </div>
                   <button
@@ -508,9 +579,15 @@ export default function WorkloadPage() {
                   </p>
                 )}
 
+                {hasInvalidRecords && (
+                  <p className="mt-2 text-orange-600 text-sm">
+                    ⚠️ 请完善所有记录（选择事项和人力）
+                  </p>
+                )}
+
                 <button
                   onClick={handleSubmit}
-                  disabled={isSubmitting || isFetchingRecords || finalTotal > 1.0 || newRecords.length === 0}
+                  disabled={isSubmitting || isFetchingRecords || finalTotal > 1.0 || newRecords.length === 0 || hasInvalidRecords}
                   className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
                   {isSubmitting ? '提交中...' : '提交记录'}
