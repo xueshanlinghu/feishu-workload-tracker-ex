@@ -135,7 +135,7 @@ function WorkloadPageContent() {
     }
 
     fetchInitialData();
-  }, [router]);
+  }, [router, toast]);
 
   // 当日期或人员变化时，获取已有记录
   useEffect(() => {
@@ -662,7 +662,7 @@ function WorkloadPageContent() {
                 </svg>
               </div>
               <p className="text-gray-500 font-medium">
-                点击"添加记录"按钮开始记录工作
+                点击&quot;添加记录&quot;按钮开始记录工作
               </p>
             </div>
           ) : (

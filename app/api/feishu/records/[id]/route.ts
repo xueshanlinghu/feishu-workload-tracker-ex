@@ -13,7 +13,7 @@ import { isSessionValid } from '@/lib/session';
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // 检查用户是否已登录
@@ -25,7 +25,7 @@ export async function DELETE(
       );
     }
 
-    const recordId = params.id;
+    const { id: recordId } = await params;
 
     if (!recordId) {
       return NextResponse.json(

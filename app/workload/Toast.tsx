@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -26,6 +26,13 @@ export default function Toast({
 }: ToastProps) {
   const [isExiting, setIsExiting] = useState(false);
 
+  const handleClose = useCallback(() => {
+    setIsExiting(true);
+    setTimeout(() => {
+      onClose();
+    }, 300); // 等待退出动画完成
+  }, [onClose]);
+
   useEffect(() => {
     if (autoClose) {
       const timer = setTimeout(() => {
@@ -34,14 +41,7 @@ export default function Toast({
 
       return () => clearTimeout(timer);
     }
-  }, [autoClose, duration]);
-
-  const handleClose = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onClose();
-    }, 300); // 等待退出动画完成
-  };
+  }, [autoClose, duration, handleClose]);
 
   const getToastStyles = () => {
     switch (type) {
