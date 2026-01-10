@@ -384,7 +384,7 @@ export default function WorkloadPage() {
             )}
             <button
               onClick={handleLogout}
-              className="px-4 py-2 text-sm text-red-600 hover:text-red-700"
+              className="px-4 py-2 text-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-md transition-colors font-medium"
             >
               登出
             </button>
@@ -481,10 +481,10 @@ export default function WorkloadPage() {
                 }
               }}
               disabled={isFetchingRecords}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-2 rounded-md transition-colors ${
                 isFetchingRecords
-                  ? 'text-gray-400 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
               }`}
               aria-label="刷新记录"
             >
@@ -663,6 +663,7 @@ export default function WorkloadPage() {
         record={editingRecord}
         onSuccess={handleEditSuccess}
         onError={handleEditError}
+        currentTotal={existingTotal}
       />
     </div>
   );

@@ -55,7 +55,11 @@ cp .env.example .env
 - `FEISHU_APP_SECRET`: 飞书应用密钥
 - `FEISHU_APP_TOKEN`: 多维表格app_token（从URL获取）
 - `FEISHU_TABLE_ID`: 表格table_id（从URL获取）
+- `FEISHU_DEPARTMENT_ID`: 部门ID（open_department_id，如 `od-xxx`，用于获取部门成员列表）
+- `NEXTAUTH_URL`: 服务访问地址（如 `http://localhost:3000`，端口修改时需同步更新）
+- `FEISHU_REDIRECT_URI`: OAuth 回调地址（需与飞书开放平台配置完全一致）
 - `SESSION_SECRET`: 会话密钥（随机生成）
+- `FEISHU_API_BASE_URL`: 飞书API域名（中国版 `https://open.feishu.cn`，国际版 `https://open.larksuite.com`）
 
 ### 3. 运行开发服务器
 
@@ -96,10 +100,29 @@ npm start
 
 ## Docker部署
 
-### 构建镜像
+### 使用Docker Compose（推荐）
+
+`docker compose` 会从 `.env` 读取变量，并在构建阶段作为 `build args` 传入（Next.js 构建需要这些环境变量）。
 
 ```bash
-docker build -t feishu-workload-tracker .
+docker compose up -d --build
+```
+
+### 构建镜像（Docker）
+
+构建镜像时需要将环境变量以 `--build-arg` 形式传入（也可直接使用上面的 Docker Compose 方式）。
+
+```bash
+docker build -t feishu-workload-tracker \
+  --build-arg FEISHU_APP_ID \
+  --build-arg FEISHU_APP_SECRET \
+  --build-arg FEISHU_APP_TOKEN \
+  --build-arg FEISHU_TABLE_ID \
+  --build-arg FEISHU_DEPARTMENT_ID \
+  --build-arg SESSION_SECRET \
+  --build-arg NEXTAUTH_URL \
+  --build-arg FEISHU_REDIRECT_URI \
+  .
 ```
 
 ### 运行容器
@@ -108,11 +131,7 @@ docker build -t feishu-workload-tracker .
 docker run -p 3000:3000 --env-file .env feishu-workload-tracker
 ```
 
-### 使用Docker Compose
-
-```bash
-docker-compose up -d
-```
+如修改 `.env` 中的变量后需要重新构建镜像，请执行 `docker compose up -d --build`。
 
 ## 项目结构
 
