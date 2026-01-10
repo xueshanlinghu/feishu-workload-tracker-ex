@@ -17,6 +17,8 @@ import EditRecordModal from './EditRecordModal';
 import CircularProgress from './CircularProgress';
 import { ToastProvider, useToast } from './ToastProvider';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import CustomDatePicker from './CustomDatePicker';
+import CustomSelect, { SelectOption } from './CustomSelect';
 
 interface User {
   userId: string;    // user_id
@@ -197,6 +199,20 @@ function WorkloadPageContent() {
 
   // 前端验证：检查是否有无效的记录（事项为空或人力为0）
   const hasInvalidRecords = newRecords.some(r => !r.task || r.workload === 0);
+
+  // 转换用户列表为选项格式
+  const userOptions: SelectOption[] = users.map(user => ({
+    value: user.openId,
+    label: user.name,
+    icon: 'user',
+  }));
+
+  // 转换任务列表为选项格式
+  const taskOptions: SelectOption[] = tasks.map(task => ({
+    value: task,
+    label: task,
+    icon: 'file',
+  }));
 
   // 提交记录
   const handleSubmit = async () => {
@@ -482,43 +498,29 @@ function WorkloadPageContent() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* 日期和人员选择 */}
-        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                选择日期
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                disabled={isFetchingRecords || isSubmitting}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-3">
-                选择人员
-              </label>
-              <select
-                value={selectedPerson}
-                onChange={(e) => setSelectedPerson(e.target.value)}
-                disabled={isFetchingRecords || isSubmitting}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-              >
-                <option value="">-- 请选择 --</option>
-                {users.map((user) => (
-                  <option key={user.openId} value={user.openId}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <CustomDatePicker
+              label="选择日期"
+              value={selectedDate}
+              onChange={setSelectedDate}
+              disabled={isFetchingRecords || isSubmitting}
+            />
+            <CustomSelect
+              label="选择人员"
+              value={selectedPerson}
+              onChange={setSelectedPerson}
+              options={userOptions}
+              placeholder="-- 请选择人员 --"
+              disabled={isFetchingRecords || isSubmitting}
+              searchable={true}
+              showIcon={true}
+            />
           </div>
         </div>
 
         {/* 已有记录 */}
-        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-800">已有记录</h2>
             <button
@@ -636,7 +638,7 @@ function WorkloadPageContent() {
         </div>
 
         {/* 新增记录 */}
-        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-800">新增记录</h2>
             <button
@@ -668,18 +670,14 @@ function WorkloadPageContent() {
               {newRecords.map((record, index) => (
                 <div key={index} className="flex gap-4 items-start bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200">
                   <div className="flex-1">
-                    <select
+                    <CustomSelect
                       value={record.task}
-                      onChange={(e) => updateRecord(index, 'task', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                    >
-                      <option value="">-- 选择事项 --</option>
-                      {tasks.map((task) => (
-                        <option key={task} value={task}>
-                          {task}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateRecord(index, 'task', value)}
+                      options={taskOptions}
+                      placeholder="-- 选择事项 --"
+                      searchable={true}
+                      showIcon={true}
+                    />
                   </div>
                   <div className="w-auto">
                     <WorkloadSelector
