@@ -1,11 +1,20 @@
 name: feishu-workload-tracker
-version: '3.8'
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # 构建时需要的环境变量（从 .env 文件读取）
+        - FEISHU_APP_ID=${FEISHU_APP_ID}
+        - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+        - FEISHU_APP_TOKEN=${FEISHU_APP_TOKEN}
+        - FEISHU_TABLE_ID=${FEISHU_TABLE_ID}
+        - FEISHU_DEPARTMENT_ID=${FEISHU_DEPARTMENT_ID}
+        - SESSION_SECRET=${SESSION_SECRET}
+        - NEXTAUTH_URL=${NEXTAUTH_URL}
+        - FEISHU_REDIRECT_URI=${FEISHU_REDIRECT_URI}
     ports:
       - "3000:3000"
     env_file:
