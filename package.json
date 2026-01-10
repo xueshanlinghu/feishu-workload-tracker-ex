@@ -1,6 +1,6 @@
 {
   "name": "feishu-workload-tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "node scripts/clean-port.js && next dev",
@@ -11,6 +11,7 @@
     "kill-port": "node scripts/clean-port.js"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "axios": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
