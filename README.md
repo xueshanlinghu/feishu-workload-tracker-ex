@@ -34,6 +34,85 @@
 - **认证**: iron-session
 - **部署**: Docker
 
+## UI设计风格
+
+本项目采用现代化的**Glassmorphism（玻璃态设计）+ Modern Minimalism（现代简约）**风格，提供优雅且直观的用户体验。
+
+### 设计理念
+
+- **Glassmorphism（玻璃态）**: 半透明背景 + 毛玻璃模糊效果，创造轻盈的视觉层次
+- **Modern Minimalism（现代简约）**: 简洁清晰的布局，突出重点内容
+- **Soft UI（柔和界面）**: 柔和的阴影和渐变，舒适的视觉体验
+- **Color Coding（色彩编码）**: 用颜色直观传达信息状态和程度
+
+### 核心设计元素
+
+1. **渐变背景**: `bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50`
+2. **毛玻璃卡片**: `bg-white/90 backdrop-blur` + `shadow-lg` + `rounded-2xl`
+3. **色彩编码系统**:
+   - 低负载（0-40%）: 绿色调 `from-green-50 to-emerald-50`
+   - 中负载（40-70%）: 蓝色调 `from-blue-50 to-indigo-50`
+   - 高负载（70%+）: 橙红色调 `from-orange-50 to-red-50`
+4. **悬浮微动效果**:
+   - 卡片抬升: `hover:-translate-y-0.5`
+   - 阴影增强: `hover:shadow-xl`
+   - 按钮缩放: `hover:scale-105`
+5. **环形进度可视化**: SVG圆环 + 渐变色 + 动画过渡
+6. **柔和过渡动画**: `transition-all duration-300`
+
+### 可复用的AI提示词模板
+
+如果您想在其他项目中获得类似的UI效果，可以向AI这样描述：
+
+> "请帮我优化这个界面的UI设计，采用以下风格：
+>
+> **整体风格**：现代简约（Modern Minimalism）+ 玻璃态设计（Glassmorphism）
+>
+> **具体要求**：
+> 1. **背景**：使用柔和的渐变背景（从浅灰到浅蓝再到淡紫）
+> 2. **卡片**：半透明白色背景 + 毛玻璃模糊效果 + 柔和阴影 + 大圆角
+> 3. **间距**：增加卡片间距和内边距，营造呼吸感
+> 4. **色彩编码**：根据数据状态使用不同渐变色（绿色=良好，蓝色=正常，橙红=警告）
+> 5. **交互动效**：
+>    - 卡片悬停时轻微抬起并增强阴影
+>    - 按钮悬停时微微放大
+>    - 所有过渡使用柔和动画（300ms）
+> 6. **按钮**：使用渐变色背景，更大的圆角
+> 7. **进度展示**：使用环形进度图或进度条，带渐变色
+>
+> 请保持简洁，不要过度装饰，重点是提升视觉层次和交互反馈。"
+
+### 技术实现要点
+
+**Tailwind CSS 关键类**：
+- 毛玻璃: `backdrop-blur` + `bg-white/90`
+- 渐变: `bg-gradient-to-br from-{color} via-{color} to-{color}`
+- 阴影层次: `shadow-lg` → `hover:shadow-xl`
+- 过渡: `transition-all duration-300`
+- 变换: `hover:-translate-y-0.5` / `hover:scale-105`
+
+**组件示例**：
+```tsx
+// 玻璃态卡片
+<div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg
+                hover:shadow-xl transition-shadow duration-300
+                p-8 border border-gray-100">
+  {/* 内容 */}
+</div>
+
+// 环形进度图
+<CircularProgress current={0.8} max={1.0} />
+
+// 渐变按钮
+<button className="bg-gradient-to-r from-blue-600 to-blue-500
+                   text-white rounded-xl px-6 py-3
+                   hover:from-blue-700 hover:to-blue-600
+                   hover:shadow-lg hover:scale-105
+                   transition-all duration-200">
+  提交
+</button>
+```
+
 ## 快速开始
 
 ### 1. 克隆项目并安装依赖

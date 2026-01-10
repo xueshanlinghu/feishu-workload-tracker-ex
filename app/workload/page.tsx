@@ -14,6 +14,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import WorkloadSelector from './WorkloadSelector';
 import EditRecordModal from './EditRecordModal';
+import CircularProgress from './CircularProgress';
+import { ToastProvider, useToast } from './ToastProvider';
+import DeleteConfirmModal from './DeleteConfirmModal';
 
 interface User {
   userId: string;    // user_id
@@ -40,6 +43,15 @@ interface NewRecord {
 }
 
 export default function WorkloadPage() {
+  return (
+    <ToastProvider>
+      <WorkloadPageContent />
+    </ToastProvider>
+  );
+}
+
+function WorkloadPageContent() {
+  const toast = useToast();
   const router = useRouter();
 
   // 状态
@@ -56,30 +68,11 @@ export default function WorkloadPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingRecords, setIsFetchingRecords] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [success, setSuccess] = useState<string>('');
   const [editingRecord, setEditingRecord] = useState<Record | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
-  // 成功提示3秒后自动消失
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => {
-        setSuccess('');
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
-
-  // 手动关闭成功提示
-  const dismissSuccess = () => {
-    setSuccess('');
-  };
-
-  // 手动关闭错误提示
-  const dismissError = () => {
-    setError('');
-  };
+  const [deletingRecord, setDeletingRecord] = useState<Record | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 获取当前用户信息
   useEffect(() => {
@@ -133,7 +126,7 @@ export default function WorkloadPage() {
         }
       } catch (err) {
         console.error('Failed to fetch initial data:', err);
-        setError('获取初始数据失败');
+        toast.showError('获取初始数据失败');
       } finally {
         setIsLoading(false);
       }
@@ -209,22 +202,20 @@ export default function WorkloadPage() {
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      setError('');
-      setSuccess('');
 
       // 验证
       if (newRecords.length === 0) {
-        setError('请至少添加一条记录');
+        toast.showError('请至少添加一条记录');
         return;
       }
 
       if (newRecords.some(r => !r.task)) {
-        setError('请填写所有事项');
+        toast.showError('请填写所有事项');
         return;
       }
 
       if (finalTotal > 1.0) {
-        setError('总人力占用不能超过1.0');
+        toast.showError('总人力占用不能超过1.0');
         return;
       }
 
@@ -258,7 +249,7 @@ export default function WorkloadPage() {
         throw new Error(data.error || '提交失败');
       }
 
-      setSuccess('记录提交成功！');
+      toast.showSuccess('记录提交成功！');
       setNewRecords([]);
 
       // 刷新已有记录
@@ -282,7 +273,7 @@ export default function WorkloadPage() {
       }
       setIsFetchingRecords(false);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '提交失败');
+      toast.showError(err instanceof Error ? err.message : '提交失败');
       setIsFetchingRecords(false);
     } finally {
       setIsSubmitting(false);
@@ -303,7 +294,6 @@ export default function WorkloadPage() {
   const openEditModal = (record: Record) => {
     setEditingRecord(record);
     setIsEditModalOpen(true);
-    setError(''); // 清除之前的错误
   };
 
   // 关闭编辑弹窗
@@ -314,7 +304,7 @@ export default function WorkloadPage() {
 
   // 编辑成功
   const handleEditSuccess = async () => {
-    setSuccess('记录更新成功！');
+    toast.showSuccess('记录更新成功！');
 
     // 等待飞书服务器同步数据（延迟2秒）
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -341,7 +331,72 @@ export default function WorkloadPage() {
 
   // 编辑失败
   const handleEditError = (errorMessage: string) => {
-    setError(errorMessage);
+    toast.showError(errorMessage);
+  };
+
+  // 打开删除确认弹窗
+  const openDeleteModal = (record: Record) => {
+    setDeletingRecord(record);
+    setIsDeleteModalOpen(true);
+  };
+
+  // 关闭删除确认弹窗
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setDeletingRecord(null);
+  };
+
+  // 确认删除记录
+  const handleDeleteConfirm = async () => {
+    if (!deletingRecord) return;
+
+    try {
+      setIsDeleting(true);
+
+      const res = await fetch(`/api/feishu/records/${deletingRecord.id}`, {
+        method: 'DELETE',
+      });
+
+      // 检查会话是否过期
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '删除失败');
+      }
+
+      toast.showSuccess('记录删除成功！');
+      closeDeleteModal();
+
+      // 等待飞书服务器同步数据（延迟2秒）
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 刷新已有记录
+      setIsFetchingRecords(true);
+      const refreshRes = await fetch(
+        `/api/feishu/records?date=${selectedDate}&person=${selectedPerson}`
+      );
+
+      if (refreshRes.status === 401) {
+        setIsFetchingRecords(false);
+        router.push('/login');
+        return;
+      }
+
+      if (refreshRes.ok) {
+        const data = await refreshRes.json();
+        setExistingRecords(data.records);
+        setExistingTotal(data.total);
+      }
+      setIsFetchingRecords(false);
+    } catch (err: unknown) {
+      toast.showError(err instanceof Error ? err.message : '删除失败');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // 生成Emoji表情
@@ -359,6 +414,37 @@ export default function WorkloadPage() {
     return '😄'.repeat(filled);
   };
 
+  // 根据人力占用程度获取卡片样式（色彩编码）
+  const getWorkloadCardStyle = (workload: number) => {
+    const percentage = (workload / 1.0) * 100;
+
+    if (percentage >= 70) {
+      // 高负载：橙红色调
+      return {
+        bg: 'bg-gradient-to-br from-orange-50 to-red-50',
+        border: 'border-orange-200',
+        textColor: 'text-orange-700',
+        iconBg: 'bg-orange-100',
+      };
+    } else if (percentage >= 40) {
+      // 中等负载：蓝色调
+      return {
+        bg: 'bg-gradient-to-br from-blue-50 to-indigo-50',
+        border: 'border-blue-200',
+        textColor: 'text-blue-700',
+        iconBg: 'bg-blue-100',
+      };
+    } else {
+      // 低负载：绿色调
+      return {
+        bg: 'bg-gradient-to-br from-green-50 to-emerald-50',
+        border: 'border-green-200',
+        textColor: 'text-green-700',
+        iconBg: 'bg-green-100',
+      };
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -371,20 +457,22 @@ export default function WorkloadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* 顶部导航栏 */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">人力占用记录</h1>
+      <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex justify-between items-center">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+            人力占用记录
+          </h1>
           <div className="flex items-center space-x-4">
             {currentUser && (
-              <span className="text-gray-700">
+              <span className="text-gray-700 font-medium">
                 欢迎，{currentUser.name}
               </span>
             )}
             <button
               onClick={handleLogout}
-              className="px-4 py-2 text-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-md transition-colors font-medium"
+              className="px-4 py-2 text-sm bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg transition-all duration-200 font-medium hover:shadow-md"
             >
               登出
             </button>
@@ -392,38 +480,12 @@ export default function WorkloadPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 消息提示 */}
-        {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              onClick={dismissError}
-              className="ml-4 text-red-500 hover:text-red-700 focus:outline-none"
-              aria-label="关闭"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded flex items-center justify-between">
-            <span>{success}</span>
-            <button
-              onClick={dismissSuccess}
-              className="ml-4 text-green-500 hover:text-green-700 focus:outline-none"
-              aria-label="关闭"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* 日期和人员选择 */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
                 选择日期
               </label>
               <input
@@ -431,18 +493,18 @@ export default function WorkloadPage() {
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 disabled={isFetchingRecords || isSubmitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
                 选择人员
               </label>
               <select
                 value={selectedPerson}
                 onChange={(e) => setSelectedPerson(e.target.value)}
                 disabled={isFetchingRecords || isSubmitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
                 <option value="">-- 请选择 --</option>
                 {users.map((user) => (
@@ -456,9 +518,9 @@ export default function WorkloadPage() {
         </div>
 
         {/* 已有记录 */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">已有记录</h2>
+        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">已有记录</h2>
             <button
               onClick={() => {
                 // 手动刷新记录
@@ -481,10 +543,10 @@ export default function WorkloadPage() {
                 }
               }}
               disabled={isFetchingRecords}
-              className={`p-2 rounded-md transition-colors ${
+              className={`p-2.5 rounded-xl transition-all duration-200 ${
                 isFetchingRecords
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
+                  : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 hover:shadow-md'
               }`}
               aria-label="刷新记录"
             >
@@ -517,40 +579,56 @@ export default function WorkloadPage() {
           {/* 有记录时显示列表 */}
           {!isFetchingRecords && existingRecords.length > 0 && (
             <>
-              <div className="space-y-3">
-                {existingRecords.map((record) => (
-                  <div
-                    key={record.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded hover:bg-gray-100 transition-colors group"
-                  >
-                    <div className="flex-1">
-                      <span className="font-medium">{record.task || '未命名任务'}</span>
+              <div className="space-y-4">
+                {existingRecords.map((record) => {
+                  const cardStyle = getWorkloadCardStyle(record.workload || 0);
+                  return (
+                    <div
+                      key={record.id}
+                      className={`flex items-center justify-between p-5 ${cardStyle.bg} border ${cardStyle.border} rounded-xl transition-all duration-300 group hover:shadow-md hover:-translate-y-0.5`}
+                    >
+                      <div className="flex-1">
+                        <span className="font-semibold text-gray-800">{record.task || '未命名任务'}</span>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <span className="text-lg hidden sm:inline">{getWorkloadEmojis(record.workload || 0)}</span>
+                        <span className={`font-bold text-lg min-w-[60px] text-right ${cardStyle.textColor}`}>
+                          {(record.workload || 0).toFixed(1)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEditModal(record)}
+                            className={`p-2 ${cardStyle.iconBg} text-current rounded-lg transition-all duration-200 hover:scale-110`}
+                            aria-label="编辑"
+                            title="编辑"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(record)}
+                            className="p-2 bg-red-100 text-red-600 rounded-lg transition-all duration-200 hover:bg-red-200 hover:scale-110"
+                            aria-label="删除"
+                            title="删除"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-sm hidden sm:inline">{getWorkloadEmojis(record.workload || 0)}</span>
-                      <span className="font-semibold text-blue-600 min-w-[50px] text-right">
-                        {(record.workload || 0).toFixed(1)}
-                      </span>
-                      <button
-                        onClick={() => openEditModal(record)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors opacity-0 group-hover:opacity-100"
-                        aria-label="编辑"
-                        title="编辑"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold">已占用人力：</span>
-                  <span className="text-2xl font-bold text-blue-600">
-                    {existingTotal.toFixed(1)} / 1.0
-                  </span>
+              <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex-1 text-center md:text-left">
+                  <h3 className="text-lg font-semibold text-gray-700 mb-1">已占用人力</h3>
+                  <p className="text-sm text-gray-500">当天工作负载统计</p>
+                </div>
+                <div className="flex justify-center">
+                  <CircularProgress current={existingTotal} max={1.0} size={140} strokeWidth={12} />
                 </div>
               </div>
             </>
@@ -558,16 +636,16 @@ export default function WorkloadPage() {
         </div>
 
         {/* 新增记录 */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">新增记录</h2>
+        <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 border border-gray-100">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">新增记录</h2>
             <button
               onClick={addNewRecord}
               disabled={isFetchingRecords}
-              className={`px-4 py-2 rounded-md ${
+              className={`px-5 py-2.5 rounded-xl font-medium transition-all duration-200 ${
                 isFetchingRecords
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-gray-400 cursor-not-allowed text-white'
+                  : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-700 hover:to-blue-600 shadow-md hover:shadow-lg hover:scale-105'
               }`}
             >
               + 添加记录
@@ -575,18 +653,25 @@ export default function WorkloadPage() {
           </div>
 
           {newRecords.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">
-              点击&ldquo;添加记录&rdquo;按钮开始记录工作
-            </p>
+            <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <div className="text-gray-400 mb-3">
+                <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <p className="text-gray-500 font-medium">
+                点击"添加记录"按钮开始记录工作
+              </p>
+            </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {newRecords.map((record, index) => (
-                <div key={index} className="flex gap-4 items-start">
+                <div key={index} className="flex gap-4 items-start bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200">
                   <div className="flex-1">
                     <select
                       value={record.task}
                       onChange={(e) => updateRecord(index, 'task', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     >
                       <option value="">-- 选择事项 --</option>
                       {tasks.map((task) => (
@@ -605,7 +690,7 @@ export default function WorkloadPage() {
                   </div>
                   <button
                     onClick={() => removeRecord(index)}
-                    className="px-3 py-2 text-red-600 hover:text-red-700"
+                    className="px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors duration-200 font-medium"
                   >
                     删除
                   </button>
@@ -613,40 +698,46 @@ export default function WorkloadPage() {
               ))}
 
               {/* 总计显示 */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>已有人力：</span>
-                    <span className="font-semibold">{existingTotal.toFixed(1)}</span>
+              <div className="mt-8 pt-6 border-t-2 border-gray-200">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-700 font-medium">已有人力：</span>
+                    <span className="font-bold text-lg text-gray-800">{existingTotal.toFixed(1)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>新增人力：</span>
-                    <span className="font-semibold">{newTotal.toFixed(1)}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-700 font-medium">新增人力：</span>
+                    <span className="font-bold text-lg text-gray-800">{newTotal.toFixed(1)}</span>
                   </div>
-                  <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                    <span>总计：</span>
-                    <span className={finalTotal > 1.0 ? 'text-red-600' : 'text-green-600'}>
+                  <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
+                    <span className="text-lg font-bold text-gray-900">总计：</span>
+                    <span className={`text-2xl font-bold ${finalTotal > 1.0 ? 'text-red-600' : 'text-green-600'}`}>
                       {finalTotal.toFixed(1)} / 1.0
                     </span>
                   </div>
                 </div>
 
                 {finalTotal > 1.0 && (
-                  <p className="mt-2 text-red-600 text-sm">
-                    ⚠️ 总人力占用超过1.0，无法提交
-                  </p>
+                  <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
+                    <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="font-medium">总人力占用超过1.0，无法提交</span>
+                  </div>
                 )}
 
                 {hasInvalidRecords && (
-                  <p className="mt-2 text-orange-600 text-sm">
-                    ⚠️ 请完善所有记录（选择事项和人力）
-                  </p>
+                  <div className="mt-4 bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-xl flex items-center">
+                    <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="font-medium">请完善所有记录（选择事项和人力）</span>
+                  </div>
                 )}
 
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting || isFetchingRecords || finalTotal > 1.0 || newRecords.length === 0 || hasInvalidRecords}
-                  className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  className="w-full mt-6 px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl hover:from-blue-700 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-blue-600 disabled:hover:to-blue-500 font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
                 >
                   {isSubmitting ? '提交中...' : '提交记录'}
                 </button>
@@ -664,6 +755,16 @@ export default function WorkloadPage() {
         onSuccess={handleEditSuccess}
         onError={handleEditError}
         currentTotal={existingTotal}
+      />
+
+      {/* 删除确认弹窗 */}
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={closeDeleteModal}
+        onConfirm={handleDeleteConfirm}
+        title="确认删除记录"
+        message={`确定要删除"${deletingRecord?.task || '该'}"记录吗？此操作无法撤销。`}
+        isDeleting={isDeleting}
       />
     </div>
   );
