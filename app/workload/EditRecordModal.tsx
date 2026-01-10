@@ -23,6 +23,7 @@ interface EditRecordModalProps {
   } | null;
   onSuccess: () => void;
   onError: (error: string) => void;
+  currentTotal: number; // 当前日期的总人力占用
 }
 
 export default function EditRecordModal({
@@ -31,6 +32,7 @@ export default function EditRecordModal({
   record,
   onSuccess,
   onError,
+  currentTotal,
 }: EditRecordModalProps) {
   const [workload, setWorkload] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,6 +43,12 @@ export default function EditRecordModal({
       setWorkload(record.workload);
     }
   }, [isOpen, record]);
+
+  // 计算修改后的总人力
+  // 总人力 = 当前总人力 - 原记录人力 + 新人力
+  const newTotal = record ? currentTotal - record.workload + workload : currentTotal;
+  const isOverLimit = newTotal > 1.0;
+  const workloadChange = record ? workload - record.workload : 0;
 
   // 提交更新
   const handleSubmit = async () => {
@@ -126,7 +134,8 @@ export default function EditRecordModal({
         </div>
 
         {/* 预览 */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-3">
+          {/* 当前选择的人力 */}
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">新的人力占用值：</span>
             <span className="flex items-center gap-2">
@@ -136,9 +145,39 @@ export default function EditRecordModal({
               </span>
             </span>
           </div>
-          <p className="mt-2 text-xs text-gray-500">
-            点击确认后，系统会验证该日期的总人力是否超过1.0
-          </p>
+
+          {/* 人力变动 */}
+          {workloadChange !== 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">人力变动：</span>
+              <span className={`font-semibold text-sm ${workloadChange > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                {workloadChange > 0 ? '+' : ''}{workloadChange.toFixed(1)}
+              </span>
+            </div>
+          )}
+
+          {/* 修改后总人力 */}
+          <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+            <span className="text-sm font-medium text-gray-700">修改后总人力：</span>
+            <span className={`font-bold text-lg ${isOverLimit ? 'text-red-600' : 'text-green-600'}`}>
+              {newTotal.toFixed(1)} / 1.0
+            </span>
+          </div>
+
+          {/* 超限警告 */}
+          {isOverLimit && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
+              <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-800">总人力超过限制</p>
+                <p className="text-xs text-red-600 mt-1">
+                  该日期总人力将达到 {newTotal.toFixed(1)}，超过 1.0 的限制，无法保存
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 按钮 */}
@@ -152,7 +191,7 @@ export default function EditRecordModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || workload === 0}
+            disabled={isSubmitting || workload === 0 || isOverLimit}
             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isSubmitting ? '更新中...' : '确认更新'}
