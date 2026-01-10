@@ -6,7 +6,7 @@
 
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useRef, useEffect } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
 import { Check, ChevronsUpDown, Search, User, FileText } from 'lucide-react';
 
@@ -38,6 +38,24 @@ export default function CustomSelect({
   showIcon = true,
 }: CustomSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [dropdownDirection, setDropdownDirection] = useState<'down' | 'up'>('down');
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // 计算下拉框应该向上还是向下弹出
+  const calculateDirection = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const dropdownHeight = 400; // 预估下拉框高度
+
+      // 如果下方空间不足，向上弹出
+      if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
+        setDropdownDirection('up');
+      } else {
+        setDropdownDirection('down');
+      }
+    }
+  };
 
   // 根据搜索查询过滤选项
   const filteredOptions = searchQuery === ''
@@ -76,6 +94,8 @@ export default function CustomSelect({
         {() => (
           <div className="relative">
             <Listbox.Button
+              ref={buttonRef}
+              onClick={calculateDirection}
                 className={`
                   relative w-full px-4 py-3
                   bg-white border border-gray-300 rounded-xl
@@ -104,7 +124,9 @@ export default function CustomSelect({
               leaveTo="opacity-0"
             >
               <Listbox.Options
-                className="absolute left-0 z-[9999] mt-2 w-full bg-white border border-gray-200 rounded-2xl shadow-2xl focus:outline-none overflow-visible"
+                className={`absolute left-0 z-[9999] w-full bg-white border border-gray-200 rounded-2xl shadow-2xl focus:outline-none overflow-visible ${
+                  dropdownDirection === 'down' ? 'mt-2' : 'bottom-full mb-2'
+                }`}
               >
               {/* 搜索框 */}
               {searchable && (

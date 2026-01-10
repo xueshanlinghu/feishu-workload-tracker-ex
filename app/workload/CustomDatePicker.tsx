@@ -5,7 +5,7 @@
 
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useRef, useEffect } from 'react';
 import { Popover, Transition } from '@headlessui/react';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -39,6 +39,24 @@ export default function CustomDatePicker({
   // 将字符串日期转换为Date对象
   const selectedDate = value ? new Date(value + 'T00:00:00') : new Date();
   const [currentMonth, setCurrentMonth] = useState(selectedDate);
+  const [dropdownDirection, setDropdownDirection] = useState<'down' | 'up'>('down');
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // 计算日历应该向上还是向下弹出
+  const calculateDirection = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const calendarHeight = 420; // 预估日历高度
+
+      // 如果下方空间不足，向上弹出
+      if (spaceBelow < calendarHeight && rect.top > calendarHeight) {
+        setDropdownDirection('up');
+      } else {
+        setDropdownDirection('down');
+      }
+    }
+  };
 
   // 获取当前月份的所有日期（包括前后填充）
   const monthStart = startOfMonth(currentMonth);
@@ -86,6 +104,8 @@ export default function CustomDatePicker({
         {({ close }) => (
           <>
             <Popover.Button
+              ref={buttonRef}
+              onClick={calculateDirection}
               disabled={disabled}
               className={`
                 relative w-full px-4 py-3
@@ -115,7 +135,9 @@ export default function CustomDatePicker({
               leaveTo="opacity-0 translate-y-1"
             >
               <Popover.Panel
-                className="absolute left-0 z-[9999] mt-2 w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4"
+                className={`absolute left-0 z-[9999] w-80 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 ${
+                  dropdownDirection === 'down' ? 'mt-2' : 'bottom-full mb-2'
+                }`}
               >
                 {/* 月份导航 */}
                 <div className="flex items-center justify-between mb-4">
