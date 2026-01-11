@@ -19,6 +19,7 @@ import { ToastProvider, useToast } from './ToastProvider';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect, { SelectOption } from './CustomSelect';
+import packageJson from '../../package.json';
 
 interface User {
   userId: string;    // user_id
@@ -744,6 +745,11 @@ function WorkloadPageContent() {
           )}
         </div>
       </main>
+
+      {/* 页面底部版本信息 */}
+      <footer className="py-4 text-center text-sm text-gray-500 border-t border-gray-200 bg-white/50">
+        <p>版本 v{packageJson.version}</p>
+      </footer>
 
       {/* 编辑记录弹窗 */}
       <EditRecordModal
