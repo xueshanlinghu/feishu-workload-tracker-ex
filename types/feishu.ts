@@ -5,7 +5,8 @@
  */
 export interface FeishuResponse<T = unknown> {
   code: number;
-  msg: string;
+  msg?: string;
+  message?: string;
   data?: T;
 }
 

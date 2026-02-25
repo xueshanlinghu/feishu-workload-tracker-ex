@@ -56,7 +56,8 @@ const createAxiosInstance = (): AxiosInstance => {
   // 响应拦截器：统一处理响应和错误
   instance.interceptors.response.use(
     (response: AxiosResponse<FeishuResponse>) => {
-      const { code, msg, data } = response.data;
+      const { code, msg, message } = response.data;
+      const errorMessage = msg || message;
 
       // 飞书API返回 code=0 表示成功
       if (code === 0) {
@@ -64,9 +65,9 @@ const createAxiosInstance = (): AxiosInstance => {
       }
 
       // code不为0表示业务错误
-      console.error('[Feishu API Error] Code:', code, 'Message:', msg);
+      console.error('[Feishu API Error] Code:', code, 'Message:', errorMessage);
       console.error('[Feishu API Error] Full response:', JSON.stringify(response.data, null, 2));
-      throw new FeishuAPIError(msg || '飞书API调用失败', code, response.data);
+      throw new FeishuAPIError(errorMessage || '飞书API调用失败', code, response.data);
     },
     (error: AxiosError) => {
       // 网络错误或其他错误
