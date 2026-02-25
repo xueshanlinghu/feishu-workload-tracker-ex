@@ -8,6 +8,8 @@ import { NextResponse } from 'next/server';
 import { getAllCompanyMembers, searchUsers } from '@/lib/feishu/users';
 import { isSessionValid } from '@/lib/session';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     // 检查用户是否已登录
@@ -56,6 +58,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
-// 设置缓存：5分钟
-export const revalidate = 300;

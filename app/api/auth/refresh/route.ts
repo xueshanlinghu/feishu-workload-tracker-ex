@@ -1,33 +1,36 @@
 /**
- * 获取当前Session信息的API
+ * 刷新当前会话Token
  *
- * GET /api/auth/session
+ * POST /api/auth/refresh
  */
 
 import { NextResponse } from 'next/server';
 import { ensureValidSessionWithAutoRefresh } from '@/lib/session';
 
-export async function GET() {
+export async function POST() {
   try {
     const validation = await ensureValidSessionWithAutoRefresh();
 
     if (!validation.ok) {
-      return NextResponse.json({
-        authenticated: false,
-        user: null,
-      });
+      return NextResponse.json(
+        {
+          authenticated: false,
+          error: '会话已失效，请重新登录',
+          reason: validation.reason,
+        },
+        { status: 401 }
+      );
     }
 
     return NextResponse.json({
       authenticated: true,
-      user: validation.user,
       refreshed: validation.refreshed,
       accessTokenExpiresAt: validation.accessTokenExpiresAt,
     });
   } catch (error) {
-    console.error('[Session API] Error:', error);
+    console.error('[Auth Refresh API] Error:', error);
     return NextResponse.json(
-      { error: '获取会话信息失败' },
+      { error: '刷新会话失败' },
       { status: 500 }
     );
   }

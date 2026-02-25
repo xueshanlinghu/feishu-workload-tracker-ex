@@ -21,6 +21,8 @@ import CustomDatePicker from './CustomDatePicker';
 import CustomSelect, { SelectOption } from './CustomSelect';
 import packageJson from '../../package.json';
 
+const SESSION_HEARTBEAT_INTERVAL_MS = 45 * 60 * 1000;
+
 interface User {
   userId: string;    // user_id
   openId: string;    // open_id (用于飞书表格查询)
@@ -99,6 +101,60 @@ function WorkloadPageContent() {
 
     fetchSession();
   }, [router]);
+
+  // 定时心跳刷新会话，避免长时间停留页面时Token失效
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let disposed = false;
+    let intervalId: number | null = null;
+
+    const refreshSession = async (source: 'interval' | 'visibility') => {
+      try {
+        const res = await fetch('/api/auth/refresh', { method: 'POST' });
+
+        if (res.status === 401) {
+          console.log(
+            `[Session Heartbeat] Session expired on ${source}, redirecting to login...`
+          );
+          if (!disposed) {
+            router.push('/login');
+          }
+          return;
+        }
+
+        if (!res.ok) {
+          console.warn(
+            `[Session Heartbeat] Refresh request failed on ${source}: ${res.status}`
+          );
+        }
+      } catch (err) {
+        console.error(`[Session Heartbeat] Refresh request error on ${source}:`, err);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshSession('visibility');
+      }
+    };
+
+    intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void refreshSession('interval');
+      }
+    }, SESSION_HEARTBEAT_INTERVAL_MS);
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      disposed = true;
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [currentUser, router]);
 
   // 获取用户列表和事项选项
   useEffect(() => {
@@ -474,7 +530,7 @@ function WorkloadPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* 顶部导航栏 */}
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex justify-between items-center">
@@ -497,7 +553,7 @@ function WorkloadPageContent() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
         {/* 日期和人员选择 */}
         <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

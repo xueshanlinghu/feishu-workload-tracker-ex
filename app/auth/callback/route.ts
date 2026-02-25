@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
       access_token,
       refresh_token,
       expires_in,
+      refresh_expires_in,
+      refresh_token_expires_in,
     } = tokenResponse;
 
     // 3. 获取用户信息
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest) {
       userAccessToken: access_token,
       refreshToken: refresh_token,
       expiresIn: expires_in,
+      refreshExpiresIn: refresh_expires_in,
+      refreshTokenExpiresIn: refresh_token_expires_in,
     });
 
     // 5. 重定向到工作负载记录页面
