@@ -237,6 +237,49 @@ docker run -p 3000:3000 --env-file .env feishu-workload-tracker
 
 如修改 `.env` 中的变量后需要重新构建镜像，请执行 `docker compose up -d --build`。
 
+## 宝塔/Nginx 缓存配置（server块）
+
+线上通过宝塔反向代理时，如果 `proxy_cache` 把 HTML 路由（如 `/workload`）长期缓存，会出现「页面引用旧的 chunk 文件，前端报 `Application error`」的问题。
+
+建议将以下规则放在站点的**自定义配置文件 -> server块**中：仅让静态资源继续走缓存，业务页面和 API 全部绕过缓存。
+
+> 说明：以下配置不包含域名，适用于单站点的 `server` 块；`proxy_cache_path` 仍由全局配置管理。
+
+```nginx
+# 仅跳过业务路由缓存；静态资源（如 /_next/static/*）继续可缓存
+set $skip_cache 0;
+
+# 页面路由（包含首页）
+if ($request_uri ~* "^/(?:$|\\?)") { set $skip_cache 1; }
+if ($request_uri ~* "^/(login|workload)(?:$|/|\\?)") { set $skip_cache 1; }
+
+# API 与鉴权相关路由
+if ($request_uri ~* "^/(api|auth)(?:/|\\?)") { set $skip_cache 1; }
+
+# 对应反向代理缓存控制
+proxy_no_cache $skip_cache;
+proxy_cache_bypass $skip_cache;
+
+# 调试响应头（可选）
+add_header X-Skip-Cache $skip_cache always;
+add_header X-Proxy-Cache $upstream_cache_status always;
+```
+
+保存后执行：
+
+```bash
+nginx -t && nginx -s reload
+```
+
+验证建议：
+
+```bash
+curl -I https://你的域名/workload
+curl -I "https://你的域名/workload?v=check"
+```
+
+两条响应应表现一致（不再出现无参数 URL 命中旧缓存、带参数 URL 正常的分裂现象）。
+
 ## 项目结构
 
 ```
