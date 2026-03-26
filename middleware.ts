@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   // 如果是受保护的路由，检查Session
   if (isProtectedPath) {
     // 获取Session Cookie
-    const sessionCookie = request.cookies.get('feishu_workload_session');
+    const sessionCookie = request.cookies.get('feishu_workload_ex_session');
 
     if (!sessionCookie) {
       // 未登录，重定向到登录页

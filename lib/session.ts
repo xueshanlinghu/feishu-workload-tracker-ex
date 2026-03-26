@@ -79,7 +79,7 @@ export interface SessionValidationResult {
  */
 const sessionOptions: SessionOptions = {
   password: config.app.sessionSecret,
-  cookieName: 'feishu_workload_session',
+  cookieName: 'feishu_workload_ex_session',
   cookieOptions: {
     secure: config.app.nodeEnv === 'production', // 生产环境使用HTTPS
     httpOnly: true, // 防止XSS攻击

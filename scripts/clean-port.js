@@ -4,7 +4,7 @@
  * 端口清理脚本
  *
  * 功能：
- * - 从 .env 文件读取 PORT 配置（默认 3000）
+ * - 从 .env 文件读取 PORT 配置（默认 3001）
  * - 查找并终止占用该端口的进程
  * - 跨平台支持（Windows/macOS/Linux）
  *
@@ -25,8 +25,8 @@ function getPortFromEnv() {
   const envPath = path.join(process.cwd(), '.env');
 
   if (!fs.existsSync(envPath)) {
-    console.log('⚠️  .env 文件不存在，使用默认端口 3000');
-    return 3000;
+    console.log('⚠️  .env 文件不存在，使用默认端口 3001');
+    return 3001;
   }
 
   const envContent = fs.readFileSync(envPath, 'utf-8');
@@ -38,8 +38,8 @@ function getPortFromEnv() {
     return port;
   }
 
-  console.log('⚠️  .env 中未找到 PORT 配置，使用默认端口 3000');
-  return 3000;
+  console.log('⚠️  .env 中未找到 PORT 配置，使用默认端口 3001');
+  return 3001;
 }
 
 /**
@@ -117,8 +117,8 @@ function killPortOnWindows(port) {
 
     return killedCount > 0;
   } catch (error) {
-    // netstat 命令失败说明端口未被占用
-    if (error.status && error.status !== 1) {
+    // Windows 下 findstr 返回码为 1 表示“未找到匹配项”，也就是端口未被占用
+    if (error && typeof error.status === 'number' && error.status === 1) {
       console.log(`✅ 端口 ${port} 未被占用`);
       return true;
     }

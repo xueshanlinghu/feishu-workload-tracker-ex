@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "飞书人力占用记录系统",
-  description: "记录每日工作人力占用情况",
+  title: "人力占用记录 | feishu-workload-tracker-ex",
+  description: "基于飞书多维表格的三级分类人力占用记录系统",
 };
 
 export default function RootLayout({
