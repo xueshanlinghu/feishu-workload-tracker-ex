@@ -13,6 +13,96 @@ import { getTenantAccessToken } from './auth';
 import { FeishuUser } from '@/types/feishu';
 import { config } from '@/lib/config';
 
+interface DepartmentUserSummary {
+  user_id: string;
+  open_id: string;
+  union_id?: string;
+  name?: string;
+  en_name?: string;
+  email?: string;
+  avatar?: FeishuUser['avatar'];
+  employee_id?: string;
+}
+
+interface BasicUserProfile {
+  user_id: string;
+  name: string;
+  i18n_name?: {
+    zh_cn?: string;
+    ja_jp?: string;
+    en_us?: string;
+  };
+}
+
+const BASIC_USER_BATCH_SIZE = 10;
+
+/**
+ * 将数组按固定大小分块
+ *
+ * 飞书 basic_batch 接口单次最多支持 10 个 user_ids，
+ * 这里统一做分块，避免调用方重复处理。
+ */
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+/**
+ * 批量获取用户姓名
+ *
+ * 先通过部门接口拿到 open_id，再通过 basic_batch 批量补齐真实姓名。
+ * 这个接口单次最多支持 10 个 user_ids，因此内部会自动分批请求。
+ *
+ * @param userIds - 用户ID列表
+ * @param userIdType - 用户ID类型
+ * @returns 以 user_id 为键的基础用户信息映射
+ */
+async function getUsersBasicProfiles(
+  userIds: string[],
+  userIdType: 'open_id' | 'union_id' | 'user_id' = 'open_id'
+): Promise<Map<string, BasicUserProfile>> {
+  const profileMap = new Map<string, BasicUserProfile>();
+
+  if (userIds.length === 0) {
+    return profileMap;
+  }
+
+  try {
+    const token = await getTenantAccessToken();
+    const client = feishuClient.withAuth(token);
+    const batches = chunkArray(userIds, BASIC_USER_BATCH_SIZE);
+
+    for (const batch of batches) {
+      const url = `/open-apis/contact/v3/users/basic_batch?user_id_type=${userIdType}`;
+      const response = await client.post<{ users?: BasicUserProfile[] }>(url, {
+        user_ids: batch,
+      });
+
+      const users = response.users || [];
+
+      users.forEach((user) => {
+        if (user.user_id && user.name) {
+          profileMap.set(user.user_id, user);
+        }
+      });
+    }
+
+    console.log(
+      `[Contact API] basic_batch resolved ${profileMap.size} names for ${userIds.length} users`
+    );
+
+    return profileMap;
+  } catch (error) {
+    console.error('Failed to get user basic profiles:', error);
+    throw new Error('批量获取用户姓名失败');
+  }
+}
+
 /**
  * 获取部门用户列表
  *
@@ -31,7 +121,7 @@ export async function getDepartmentUsers(
 ): Promise<{
   has_more: boolean;
   page_token?: string;
-  items: FeishuUser[];
+  items: DepartmentUserSummary[];
 }> {
   try {
     const token = await getTenantAccessToken();
@@ -60,7 +150,7 @@ export async function getDepartmentUsers(
     const response = await client.get<{
       has_more: boolean;
       page_token?: string;
-      items: FeishuUser[];
+      items: DepartmentUserSummary[];
     }>(url);
 
     console.log('[Contact API] Full response:', JSON.stringify(response, null, 2));
@@ -115,7 +205,7 @@ export async function getUserInfo(userId: string): Promise<FeishuUser> {
  */
 export async function getAllCompanyMembers(): Promise<FeishuUser[]> {
   try {
-    const allUsers: FeishuUser[] = [];
+    const allUsers: DepartmentUserSummary[] = [];
     const departmentId = config.feishu.departmentId;
 
     if (!departmentId) {
@@ -160,9 +250,30 @@ export async function getAllCompanyMembers(): Promise<FeishuUser[]> {
       new Map(allUsers.map((user) => [user.open_id, user])).values()
     );
 
-    console.log(`[Users] Successfully fetched ${uniqueUsers.length} unique company members`);
+    const basicProfiles = await getUsersBasicProfiles(
+      uniqueUsers.map((user) => user.open_id),
+      'open_id'
+    );
 
-    return uniqueUsers;
+    const usersWithNames = uniqueUsers.map((user) => {
+      const basicProfile = basicProfiles.get(user.open_id);
+
+      return {
+        ...user,
+        name: basicProfile?.name || user.name || '',
+      };
+    });
+
+    const missingNames = usersWithNames.filter((user) => !user.name).map((user) => user.open_id);
+
+    if (missingNames.length > 0) {
+      console.error('[Users] Missing names for open_ids:', missingNames);
+      throw new Error('存在未能获取姓名的成员，请检查通讯录基础信息权限');
+    }
+
+    console.log(`[Users] Successfully fetched ${usersWithNames.length} unique company members`);
+
+    return usersWithNames;
   } catch (error) {
     console.error('Failed to get all company members:', error);
     throw new Error('获取企业成员列表失败');

@@ -209,10 +209,12 @@ npm start
 - `bitable:app` - 访问多维表格
 - `contact:contact.base:readonly` - 获取通讯录基础信息（应用身份权限）
 - `contact:department.organize:readonly` - 获取通讯录部门组织架构信息（应用身份权限）
+- `contact:user.basic_profile:readonly` - 批量获取用户姓名（应用身份权限）
 
 注意：
 - 以上通讯录权限需要在“应用身份权限 tenant_access_token”页签中开通并发布版本。
 - 如果未开通，获取成员列表时可能出现 `99991672 Access denied`。
+- 如果未开通 `contact:user.basic_profile:readonly`，人员列表可能只能拿到 ID，无法展示真实姓名。
 
 ## Docker部署
 

@@ -110,7 +110,7 @@ export default function WorkloadPage() {
 }
 
 function WorkloadPageContent() {
-  const toast = useToast();
+  const { showError, showSuccess } = useToast();
   const router = useRouter();
 
   const contentOptionsCacheRef = useRef<Record<string, SelectOption[]>>({});
@@ -191,11 +191,11 @@ function WorkloadPageContent() {
       setTypeOptions(toSelectOptions(typesData.items || []));
     } catch (error) {
       console.error('Failed to fetch initial data:', error);
-      toast.showError('获取初始数据失败');
+      showError('获取初始数据失败');
     } finally {
       setIsLoading(false);
     }
-  }, [router, toast]);
+  }, [router, showError]);
 
   const fetchExistingRecords = useCallback(async (date: string, personId: string) => {
     try {
@@ -221,11 +221,11 @@ function WorkloadPageContent() {
       console.error('Failed to fetch records:', error);
       setExistingRecords([]);
       setExistingTotal(0);
-      toast.showError('获取已有记录失败');
+      showError('获取已有记录失败');
     } finally {
       setIsFetchingRecords(false);
     }
-  }, [router, toast]);
+  }, [router, showError]);
 
   async function fetchCategoryResponse(url: string): Promise<CategoryResponse> {
     const response = await fetch(url);
@@ -297,7 +297,7 @@ function WorkloadPageContent() {
         contentOptions: [],
         isLoadingContents: false,
       }));
-      toast.showError(error instanceof Error ? error.message : '获取内容选项失败');
+      showError(error instanceof Error ? error.message : '获取内容选项失败');
     }
   }
 
@@ -358,7 +358,7 @@ function WorkloadPageContent() {
         isLoadingDetails: false,
         detailRequired: false,
       }));
-      toast.showError(error instanceof Error ? error.message : '获取细项选项失败');
+      showError(error instanceof Error ? error.message : '获取细项选项失败');
     }
   }
 
@@ -501,22 +501,22 @@ function WorkloadPageContent() {
       setIsSubmitting(true);
 
       if (newRecords.length === 0) {
-        toast.showError('请至少添加一条记录');
+        showError('请至少添加一条记录');
         return;
       }
 
       if (hasPendingCategoryLoad) {
-        toast.showError('请等待分类选项加载完成后再提交');
+        showError('请等待分类选项加载完成后再提交');
         return;
       }
 
       if (hasInvalidRecords) {
-        toast.showError('请完善所有记录的分类和人力占用');
+        showError('请完善所有记录的分类和人力占用');
         return;
       }
 
       if (finalTotal > 1.0) {
-        toast.showError('总人力占用不能超过1.0');
+        showError('总人力占用不能超过1.0');
         return;
       }
 
@@ -547,11 +547,11 @@ function WorkloadPageContent() {
         throw new Error(data.error || '提交失败');
       }
 
-      toast.showSuccess('记录提交成功！');
+      showSuccess('记录提交成功！');
       setNewRecords([]);
       await refreshRecords();
     } catch (error) {
-      toast.showError(error instanceof Error ? error.message : '提交失败');
+      showError(error instanceof Error ? error.message : '提交失败');
     } finally {
       setIsSubmitting(false);
     }
@@ -577,13 +577,13 @@ function WorkloadPageContent() {
   };
 
   const handleEditSuccess = async () => {
-    toast.showSuccess('记录更新成功！');
+    showSuccess('记录更新成功！');
     await new Promise((resolve) => setTimeout(resolve, 2000));
     await refreshRecords();
   };
 
   const handleEditError = (errorMessage: string) => {
-    toast.showError(errorMessage);
+    showError(errorMessage);
   };
 
   const openDeleteModal = (record: ExistingRecord) => {
@@ -618,12 +618,12 @@ function WorkloadPageContent() {
         throw new Error(data.error || '删除失败');
       }
 
-      toast.showSuccess('记录删除成功！');
+      showSuccess('记录删除成功！');
       closeDeleteModal();
       await new Promise((resolve) => setTimeout(resolve, 2000));
       await refreshRecords();
     } catch (error) {
-      toast.showError(error instanceof Error ? error.message : '删除失败');
+      showError(error instanceof Error ? error.message : '删除失败');
     } finally {
       setIsDeleting(false);
     }
@@ -683,7 +683,7 @@ function WorkloadPageContent() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex justify-between items-center">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-5 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-black">人力占用记录</h1>
           <div className="flex items-center space-x-4">
             {currentUser && (
@@ -699,7 +699,7 @@ function WorkloadPageContent() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+      <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 2xl:px-10 py-10">
         <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <CustomDatePicker
@@ -785,7 +785,10 @@ function WorkloadPageContent() {
                       className={`flex items-center justify-between p-5 ${cardStyle.bg} border ${cardStyle.border} rounded-xl transition-all duration-300 group hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex-1">
-                        <span className="font-semibold text-gray-800">
+                        <span
+                          title={record.task || '未命名记录'}
+                          className="font-semibold text-gray-800"
+                        >
                           {record.task || '未命名记录'}
                         </span>
                       </div>
@@ -887,7 +890,7 @@ function WorkloadPageContent() {
                   key={record.id}
                   className="bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200"
                 >
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_1fr_auto_auto] xl:items-start">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_auto_auto] xl:items-start 2xl:grid-cols-[minmax(210px,0.9fr)_minmax(320px,1.35fr)_minmax(320px,1.35fr)_auto_auto]">
                     <CustomSelect
                       label="类型"
                       value={record.typeRecordId}

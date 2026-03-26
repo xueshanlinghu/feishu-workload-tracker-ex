@@ -6,7 +6,7 @@
 
 'use client';
 
-import { Fragment, useState, useRef, useEffect } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
 import { Check, ChevronsUpDown, LoaderCircle, Search, User, FileText } from 'lucide-react';
 
@@ -41,14 +41,50 @@ export default function CustomSelect({
 }: CustomSelectProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownDirection, setDropdownDirection] = useState<'down' | 'up'>('down');
+  const [dropdownHorizontalAlign, setDropdownHorizontalAlign] = useState<'left' | 'right'>('left');
+  const [dropdownWidth, setDropdownWidth] = useState<number | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const measurementCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // 计算下拉框应该向上还是向下弹出
-  const calculateDirection = () => {
+  // 估算文本宽度，用于在大屏上为下拉层提供更宽的内容展示空间
+  const measureLabelWidth = useCallback((label: string) => {
+    if (typeof window === 'undefined' || !buttonRef.current) {
+      return label.length * 16;
+    }
+
+    if (!measurementCanvasRef.current) {
+      measurementCanvasRef.current = document.createElement('canvas');
+    }
+
+    const context = measurementCanvasRef.current.getContext('2d');
+    if (!context) {
+      return label.length * 16;
+    }
+
+    const buttonStyles = window.getComputedStyle(buttonRef.current);
+    context.font = `${buttonStyles.fontWeight} ${buttonStyles.fontSize} ${buttonStyles.fontFamily}`;
+
+    return context.measureText(label).width;
+  }, []);
+
+  // 计算下拉框的弹出方向、水平对齐方式和建议宽度
+  const calculateDropdownLayout = useCallback(() => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
       const dropdownHeight = 400; // 预估下拉框高度
+      const widestOption = options.reduce(
+        (maxWidth, option) => Math.max(maxWidth, measureLabelWidth(option.label)),
+        0
+      );
+      const contentPadding = showIcon ? 156 : 132;
+      const preferredWidth = Math.ceil(
+        Math.max(rect.width, widestOption + contentPadding, searchable ? 300 : rect.width)
+      );
+      const maxAllowedWidth = Math.min(window.innerWidth - 32, 720);
+      const nextDropdownWidth = Math.min(preferredWidth, maxAllowedWidth);
+      const fitsRight = rect.left + nextDropdownWidth <= window.innerWidth - 16;
+      const fitsLeft = rect.right - nextDropdownWidth >= 16;
 
       // 如果下方空间不足，向上弹出
       if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
@@ -56,8 +92,28 @@ export default function CustomSelect({
       } else {
         setDropdownDirection('down');
       }
+
+      setDropdownHorizontalAlign(!fitsRight && fitsLeft ? 'right' : 'left');
+      setDropdownWidth(nextDropdownWidth);
     }
-  };
+  }, [measureLabelWidth, options, searchable, showIcon]);
+
+  useEffect(() => {
+    calculateDropdownLayout();
+    // 选项变化后重新测量弹层宽度，保证内容更新时不会继续沿用旧宽度
+  }, [calculateDropdownLayout]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      calculateDropdownLayout();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [calculateDropdownLayout]);
 
   // 根据搜索查询过滤选项
   const filteredOptions = searchQuery === ''
@@ -99,7 +155,7 @@ export default function CustomSelect({
           <div className="relative">
             <Listbox.Button
               ref={buttonRef}
-              onClick={calculateDirection}
+              onClick={calculateDropdownLayout}
                 className={`
                   relative w-full px-4 py-3
                   bg-white border border-gray-300 rounded-xl
@@ -112,7 +168,10 @@ export default function CustomSelect({
               >
                 <span className="flex items-center gap-3">
                   {selectedOption && getIcon(selectedOption.icon)}
-                  <span className={`block truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900 font-medium'}`}>
+                  <span
+                    title={selectedOption?.label}
+                    className={`block truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900 font-medium'}`}
+                  >
                     {selectedOption ? selectedOption.label : placeholder}
                   </span>
                 </span>
@@ -132,9 +191,16 @@ export default function CustomSelect({
               leaveTo="opacity-0"
             >
               <Listbox.Options
-                className={`absolute left-0 z-[9999] w-full bg-white border border-gray-200 rounded-2xl shadow-2xl focus:outline-none overflow-visible ${
+                className={`absolute z-[9999] bg-white border border-gray-200 rounded-2xl shadow-2xl focus:outline-none overflow-visible ${
+                  dropdownHorizontalAlign === 'right' ? 'right-0' : 'left-0'
+                } ${
                   dropdownDirection === 'down' ? 'mt-2' : 'bottom-full mb-2'
                 }`}
+                style={{
+                  width: dropdownWidth ? `${dropdownWidth}px` : undefined,
+                  minWidth: '100%',
+                  maxWidth: 'calc(100vw - 2rem)',
+                }}
               >
               {/* 搜索框 */}
               {searchable && (
@@ -176,10 +242,11 @@ export default function CustomSelect({
                       }
                     >
                       {({ selected, active }) => (
-                        <div className="flex items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
                           {getIcon(option.icon)}
                           <span
-                            className={`block truncate flex-1 ${
+                            title={option.label}
+                            className={`block flex-1 overflow-hidden text-ellipsis whitespace-nowrap ${
                               selected ? 'font-semibold' : 'font-medium'
                             }`}
                           >
