@@ -8,6 +8,8 @@ import { NextResponse } from 'next/server';
 import { getTaskOptions } from '@/lib/feishu/bitable';
 import { isSessionValid } from '@/lib/session';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     // 检查用户是否已登录
@@ -34,6 +36,3 @@ export async function GET() {
     );
   }
 }
-
-// 设置缓存：10分钟
-export const revalidate = 600;

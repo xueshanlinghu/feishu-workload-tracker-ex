@@ -5,7 +5,8 @@
  */
 export interface FeishuResponse<T = unknown> {
   code: number;
-  msg: string;
+  msg?: string;
+  message?: string;
   data?: T;
 }
 
@@ -25,6 +26,8 @@ export interface UserAccessTokenResponse {
   refresh_token: string;
   expires_in: number;
   token_type: string;
+  refresh_expires_in?: number;
+  refresh_token_expires_in?: number;
 }
 
 /**

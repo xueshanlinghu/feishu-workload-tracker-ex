@@ -8,6 +8,19 @@
 import { SessionOptions, getIronSession, IronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 import { config } from './config';
+import { refreshUserToken } from './feishu/auth';
+
+const THIRTY_DAYS_SECONDS = 60 * 60 * 24 * 30;
+const ACCESS_TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000;
+const DEFAULT_REFRESH_TOKEN_TTL_MS = THIRTY_DAYS_SECONDS * 1000;
+
+interface RefreshAttemptResult {
+  ok: boolean;
+  refreshed: boolean;
+  reason?: string;
+}
+
+const userRefreshInFlight = new Map<string, Promise<RefreshAttemptResult>>();
 
 /**
  * Session数据结构
@@ -36,9 +49,29 @@ export interface SessionData {
    */
   refreshToken?: string;
   /**
-   * Token过期时间（Unix时间戳，毫秒）
+   * Access Token过期时间（Unix时间戳，毫秒）
+   */
+  accessTokenExpiresAt?: number;
+  /**
+   * Refresh Token过期时间（Unix时间戳，毫秒）
+   */
+  refreshTokenExpiresAt?: number;
+  /**
+   * 最近一次成功刷新Token的时间（Unix时间戳，毫秒）
+   */
+  lastTokenRefreshAt?: number;
+  /**
+   * 旧字段兼容：等价于accessTokenExpiresAt
    */
   expiresAt?: number;
+}
+
+export interface SessionValidationResult {
+  ok: boolean;
+  refreshed: boolean;
+  reason?: string;
+  user?: SessionData['user'];
+  accessTokenExpiresAt?: number;
 }
 
 /**
@@ -51,7 +84,7 @@ const sessionOptions: SessionOptions = {
     secure: config.app.nodeEnv === 'production', // 生产环境使用HTTPS
     httpOnly: true, // 防止XSS攻击
     sameSite: 'lax', // CSRF保护
-    maxAge: 60 * 60 * 24 * 30, // 30天
+    maxAge: THIRTY_DAYS_SECONDS, // 30天
     path: '/',
   },
 };
@@ -82,8 +115,17 @@ export async function createUserSession(userData: {
   userAccessToken: string;
   refreshToken: string;
   expiresIn: number; // 秒
+  refreshExpiresIn?: number; // 秒
+  refreshTokenExpiresIn?: number; // 秒
 }): Promise<void> {
   const session = await getSession();
+  const now = Date.now();
+  const accessTokenExpiresAt = now + userData.expiresIn * 1000;
+  const refreshTokenExpiresAt = resolveRefreshTokenExpiresAt(
+    now,
+    userData.refreshExpiresIn,
+    userData.refreshTokenExpiresIn
+  );
 
   session.isAuthenticated = true;
   session.user = {
@@ -95,7 +137,10 @@ export async function createUserSession(userData: {
   };
   session.userAccessToken = userData.userAccessToken;
   session.refreshToken = userData.refreshToken;
-  session.expiresAt = Date.now() + userData.expiresIn * 1000;
+  session.accessTokenExpiresAt = accessTokenExpiresAt;
+  session.refreshTokenExpiresAt = refreshTokenExpiresAt;
+  session.lastTokenRefreshAt = now;
+  session.expiresAt = accessTokenExpiresAt; // 兼容旧逻辑
 
   await session.save();
 
@@ -111,25 +156,188 @@ export async function destroySession(): Promise<void> {
   console.log('[Session] Session destroyed');
 }
 
+function getAccessTokenExpiresAt(session: IronSession<SessionData>): number | undefined {
+  return session.accessTokenExpiresAt ?? session.expiresAt;
+}
+
+function resolveRefreshTokenExpiresAt(
+  now: number,
+  refreshExpiresIn?: number,
+  refreshTokenExpiresIn?: number,
+  currentRefreshTokenExpiresAt?: number
+): number {
+  const ttlSeconds = refreshExpiresIn ?? refreshTokenExpiresIn;
+
+  if (typeof ttlSeconds === 'number' && ttlSeconds > 0) {
+    return now + ttlSeconds * 1000;
+  }
+
+  if (
+    typeof currentRefreshTokenExpiresAt === 'number' &&
+    currentRefreshTokenExpiresAt > now
+  ) {
+    return currentRefreshTokenExpiresAt;
+  }
+
+  return now + DEFAULT_REFRESH_TOKEN_TTL_MS;
+}
+
+async function refreshSessionTokenWithLock(
+  session: IronSession<SessionData>
+): Promise<RefreshAttemptResult> {
+  const userKey = session.user?.userId || session.user?.openId || session.refreshToken;
+
+  if (!userKey) {
+    return { ok: false, refreshed: false, reason: 'missing_user_key' };
+  }
+
+  const pending = userRefreshInFlight.get(userKey);
+  if (pending) {
+    return pending;
+  }
+
+  const refreshPromise = tryRefreshSessionToken(session).finally(() => {
+    userRefreshInFlight.delete(userKey);
+  });
+
+  userRefreshInFlight.set(userKey, refreshPromise);
+  return refreshPromise;
+}
+
+/**
+ * 尝试刷新当前Session里的用户令牌
+ */
+export async function tryRefreshSessionToken(
+  session: IronSession<SessionData>
+): Promise<RefreshAttemptResult> {
+  const now = Date.now();
+  const currentAccessTokenExpiresAt = getAccessTokenExpiresAt(session);
+
+  if (!session.refreshToken) {
+    return { ok: false, refreshed: false, reason: 'missing_refresh_token' };
+  }
+
+  if (
+    typeof session.refreshTokenExpiresAt === 'number' &&
+    now >= session.refreshTokenExpiresAt
+  ) {
+    return { ok: false, refreshed: false, reason: 'refresh_token_expired' };
+  }
+
+  try {
+    const tokenResponse = await refreshUserToken(session.refreshToken);
+
+    if (!tokenResponse.access_token || !tokenResponse.expires_in) {
+      return { ok: false, refreshed: false, reason: 'invalid_refresh_response' };
+    }
+
+    const refreshedAt = Date.now();
+    const nextAccessTokenExpiresAt = refreshedAt + tokenResponse.expires_in * 1000;
+
+    session.userAccessToken = tokenResponse.access_token;
+    if (tokenResponse.refresh_token) {
+      session.refreshToken = tokenResponse.refresh_token;
+    }
+    session.accessTokenExpiresAt = nextAccessTokenExpiresAt;
+    session.refreshTokenExpiresAt = resolveRefreshTokenExpiresAt(
+      refreshedAt,
+      tokenResponse.refresh_expires_in,
+      tokenResponse.refresh_token_expires_in,
+      session.refreshTokenExpiresAt
+    );
+    session.lastTokenRefreshAt = refreshedAt;
+    session.expiresAt = nextAccessTokenExpiresAt; // 兼容旧逻辑
+
+    await session.save();
+
+    console.log(
+      `[AuthRefresh] Refreshed access token for user ${session.user?.name || 'unknown'}`
+    );
+
+    return { ok: true, refreshed: true };
+  } catch (error) {
+    if (currentAccessTokenExpiresAt && currentAccessTokenExpiresAt > now) {
+      console.warn(
+        `[AuthRefresh] Refresh failed but current token is still valid for user ${session.user?.name || 'unknown'}`
+      );
+      return {
+        ok: true,
+        refreshed: false,
+        reason: 'refresh_failed_but_access_token_still_valid',
+      };
+    }
+
+    console.error('[AuthRefresh] Refresh failed and access token already expired:', error);
+    return { ok: false, refreshed: false, reason: 'refresh_failed' };
+  }
+}
+
+/**
+ * 校验Session并在需要时自动刷新用户令牌
+ */
+export async function ensureValidSessionWithAutoRefresh(): Promise<SessionValidationResult> {
+  const session = await getSession();
+
+  if (!session.isAuthenticated || !session.user || !session.userAccessToken) {
+    return { ok: false, refreshed: false, reason: 'unauthenticated' };
+  }
+
+  const accessTokenExpiresAt = getAccessTokenExpiresAt(session);
+  if (!accessTokenExpiresAt) {
+    return { ok: false, refreshed: false, reason: 'missing_access_token_expiry' };
+  }
+
+  const now = Date.now();
+
+  if (
+    typeof session.refreshTokenExpiresAt === 'number' &&
+    now >= session.refreshTokenExpiresAt
+  ) {
+    return { ok: false, refreshed: false, reason: 'refresh_token_expired' };
+  }
+
+  // Access Token足够新鲜，直接放行
+  if (accessTokenExpiresAt > now + ACCESS_TOKEN_REFRESH_BUFFER_MS) {
+    return {
+      ok: true,
+      refreshed: false,
+      user: session.user,
+      accessTokenExpiresAt,
+    };
+  }
+
+  const refreshResult = await refreshSessionTokenWithLock(session);
+
+  if (!refreshResult.ok) {
+    return {
+      ok: false,
+      refreshed: false,
+      reason: refreshResult.reason,
+    };
+  }
+
+  return {
+    ok: true,
+    refreshed: refreshResult.refreshed,
+    reason: refreshResult.reason,
+    user: session.user,
+    accessTokenExpiresAt: getAccessTokenExpiresAt(session),
+  };
+}
+
 /**
  * 检查Session是否有效
  *
  * @returns 是否有效
  */
 export async function isSessionValid(): Promise<boolean> {
-  const session = await getSession();
+  const validation = await ensureValidSessionWithAutoRefresh();
 
-  if (!session.isAuthenticated || !session.expiresAt) {
-    return false;
+  if (!validation.ok) {
+    console.log('[Session] Session invalid:', validation.reason || 'unknown');
   }
 
-  // 检查Token是否过期
-  if (Date.now() > session.expiresAt) {
-    console.log('[Session] Session expired');
-    return false;
-  }
-
-  return true;
+  return validation.ok;
 }
 
 /**

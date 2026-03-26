@@ -143,17 +143,19 @@ export async function refreshUserToken(
   refreshToken: string
 ): Promise<UserAccessTokenResponse> {
   try {
+    // 与授权码换取token保持同一链路：使用tenant_access_token鉴权
+    const tenantToken = await getTenantAccessToken();
+
     const response = await feishuClient.post<UserAccessTokenResponse>(
-      '/open-apis/authen/v1/oidc/refresh_access_token',
+      '/open-apis/authen/v1/refresh_access_token',
       {
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
       },
       {
         headers: {
-          Authorization: `Basic ${Buffer.from(
-            `${config.feishu.appId}:${config.feishu.appSecret}`
-          ).toString('base64')}`,
+          Authorization: `Bearer ${tenantToken}`,
+          'Content-Type': 'application/json',
         },
       }
     );
