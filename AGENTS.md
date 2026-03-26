@@ -1,6 +1,7 @@
 # Codex 开发规范
 
 本文件记录了在本项目中使用Codex的开发规范和约定。
+当前项目名称为 `feishu-workload-tracker-ex`。
 
 ## 命令规范
 
@@ -62,10 +63,10 @@ git push origin main
 
 ```bash
 # 构建镜像
-docker build -t feishu-workload-tracker .
+docker build -t feishu-workload-tracker-ex .
 
 # 运行容器
-docker run -p 3000:3000 --env-file .env feishu-workload-tracker
+docker run -p 3001:3001 --env-file .env feishu-workload-tracker-ex
 
 # 使用Docker Compose
 docker-compose up -d
