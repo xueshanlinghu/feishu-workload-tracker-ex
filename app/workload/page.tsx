@@ -110,7 +110,7 @@ export default function WorkloadPage() {
 }
 
 function WorkloadPageContent() {
-  const toast = useToast();
+  const { showError, showSuccess } = useToast();
   const router = useRouter();
 
   const contentOptionsCacheRef = useRef<Record<string, SelectOption[]>>({});
@@ -191,11 +191,11 @@ function WorkloadPageContent() {
       setTypeOptions(toSelectOptions(typesData.items || []));
     } catch (error) {
       console.error('Failed to fetch initial data:', error);
-      toast.showError('获取初始数据失败');
+      showError('获取初始数据失败');
     } finally {
       setIsLoading(false);
     }
-  }, [router, toast]);
+  }, [router, showError]);
 
   const fetchExistingRecords = useCallback(async (date: string, personId: string) => {
     try {
@@ -221,11 +221,11 @@ function WorkloadPageContent() {
       console.error('Failed to fetch records:', error);
       setExistingRecords([]);
       setExistingTotal(0);
-      toast.showError('获取已有记录失败');
+      showError('获取已有记录失败');
     } finally {
       setIsFetchingRecords(false);
     }
-  }, [router, toast]);
+  }, [router, showError]);
 
   async function fetchCategoryResponse(url: string): Promise<CategoryResponse> {
     const response = await fetch(url);
@@ -297,7 +297,7 @@ function WorkloadPageContent() {
         contentOptions: [],
         isLoadingContents: false,
       }));
-      toast.showError(error instanceof Error ? error.message : '获取内容选项失败');
+      showError(error instanceof Error ? error.message : '获取内容选项失败');
     }
   }
 
@@ -358,7 +358,7 @@ function WorkloadPageContent() {
         isLoadingDetails: false,
         detailRequired: false,
       }));
-      toast.showError(error instanceof Error ? error.message : '获取细项选项失败');
+      showError(error instanceof Error ? error.message : '获取细项选项失败');
     }
   }
 
@@ -501,22 +501,22 @@ function WorkloadPageContent() {
       setIsSubmitting(true);
 
       if (newRecords.length === 0) {
-        toast.showError('请至少添加一条记录');
+        showError('请至少添加一条记录');
         return;
       }
 
       if (hasPendingCategoryLoad) {
-        toast.showError('请等待分类选项加载完成后再提交');
+        showError('请等待分类选项加载完成后再提交');
         return;
       }
 
       if (hasInvalidRecords) {
-        toast.showError('请完善所有记录的分类和人力占用');
+        showError('请完善所有记录的分类和人力占用');
         return;
       }
 
       if (finalTotal > 1.0) {
-        toast.showError('总人力占用不能超过1.0');
+        showError('总人力占用不能超过1.0');
         return;
       }
 
@@ -547,11 +547,11 @@ function WorkloadPageContent() {
         throw new Error(data.error || '提交失败');
       }
 
-      toast.showSuccess('记录提交成功！');
+      showSuccess('记录提交成功！');
       setNewRecords([]);
       await refreshRecords();
     } catch (error) {
-      toast.showError(error instanceof Error ? error.message : '提交失败');
+      showError(error instanceof Error ? error.message : '提交失败');
     } finally {
       setIsSubmitting(false);
     }
@@ -577,13 +577,13 @@ function WorkloadPageContent() {
   };
 
   const handleEditSuccess = async () => {
-    toast.showSuccess('记录更新成功！');
+    showSuccess('记录更新成功！');
     await new Promise((resolve) => setTimeout(resolve, 2000));
     await refreshRecords();
   };
 
   const handleEditError = (errorMessage: string) => {
-    toast.showError(errorMessage);
+    showError(errorMessage);
   };
 
   const openDeleteModal = (record: ExistingRecord) => {
@@ -618,12 +618,12 @@ function WorkloadPageContent() {
         throw new Error(data.error || '删除失败');
       }
 
-      toast.showSuccess('记录删除成功！');
+      showSuccess('记录删除成功！');
       closeDeleteModal();
       await new Promise((resolve) => setTimeout(resolve, 2000));
       await refreshRecords();
     } catch (error) {
-      toast.showError(error instanceof Error ? error.message : '删除失败');
+      showError(error instanceof Error ? error.message : '删除失败');
     } finally {
       setIsDeleting(false);
     }
