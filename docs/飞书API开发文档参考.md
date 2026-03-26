@@ -123,9 +123,13 @@ https://open.feishu.cn/document/server-docs/docs/bitable-v1/
 3. **`contact:department.organize:readonly`** - 获取通讯录部门组织架构信息
    文档: https://open.feishu.cn/document/server-docs/contact-v3/department/parent_department
 
+4. **`contact:user.basic_profile:readonly`** - 批量获取用户姓名
+   文档: https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/contact-v3/user/basic_batch
+
 ⚠️ 说明：
-- 以上两个通讯录权限需要在 **应用身份权限 `tenant_access_token`** 页签下开通。
+- 以上通讯录权限需要在 **应用身份权限 `tenant_access_token`** 页签下开通。
 - 权限变更后必须重新创建版本并发布，否则运行时仍可能报 `99991672 Access denied`。
+- 当前项目会先按部门拉取成员 ID，再通过 `basic_batch` 批量补齐姓名，因此 `contact:user.basic_profile:readonly` 也是人员列表展示姓名的必要权限。
 
 ### 权限发布流程
 
@@ -211,9 +215,10 @@ https://open.feishu.cn/app/
 **排查步骤**:
 1. 检查是否添加了 `contact:contact.base:readonly` 权限
 2. 检查是否添加了 `contact:department.organize:readonly` 权限
-3. 确认这两个权限是在 **应用身份权限 `tenant_access_token`** 下开通的
-4. 确认权限版本已发布并生效
-5. 检查tenant_access_token是否有效
+3. 检查是否添加了 `contact:user.basic_profile:readonly` 权限
+4. 确认这三个权限是在 **应用身份权限 `tenant_access_token`** 下开通的
+5. 确认权限版本已发布并生效
+6. 检查tenant_access_token是否有效
 
 ### 问题3: 无法写入多维表格
 **症状**: 创建记录失败
