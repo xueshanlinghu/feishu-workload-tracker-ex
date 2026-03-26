@@ -683,7 +683,7 @@ function WorkloadPageContent() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex justify-between items-center">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-5 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-black">人力占用记录</h1>
           <div className="flex items-center space-x-4">
             {currentUser && (
@@ -699,7 +699,7 @@ function WorkloadPageContent() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+      <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 2xl:px-10 py-10">
         <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 mb-8 border border-gray-100">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <CustomDatePicker
@@ -785,7 +785,10 @@ function WorkloadPageContent() {
                       className={`flex items-center justify-between p-5 ${cardStyle.bg} border ${cardStyle.border} rounded-xl transition-all duration-300 group hover:shadow-md hover:-translate-y-0.5`}
                     >
                       <div className="flex-1">
-                        <span className="font-semibold text-gray-800">
+                        <span
+                          title={record.task || '未命名记录'}
+                          className="font-semibold text-gray-800"
+                        >
                           {record.task || '未命名记录'}
                         </span>
                       </div>
@@ -887,7 +890,7 @@ function WorkloadPageContent() {
                   key={record.id}
                   className="bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200"
                 >
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_1fr_auto_auto] xl:items-start">
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_auto_auto] xl:items-start 2xl:grid-cols-[minmax(210px,0.9fr)_minmax(320px,1.35fr)_minmax(320px,1.35fr)_auto_auto]">
                     <CustomSelect
                       label="类型"
                       value={record.typeRecordId}
