@@ -64,7 +64,7 @@ export interface RecordFilter {
  */
 export async function queryRecords(
   appToken: string = config.feishu.appToken,
-  tableId: string = config.feishu.tableId,
+  tableId: string = config.feishu.recordTableId,
   filter?: RecordFilter
 ): Promise<QueryRecordsResponse> {
   try {
@@ -83,6 +83,40 @@ export async function queryRecords(
     console.error('Failed to query records:', error);
     throw new Error('查询记录失败');
   }
+}
+
+/**
+ * 查询指定表中的全部记录
+ *
+ * 多维表格分页单次最多返回500条，这里会自动翻页拉取完整结果。
+ *
+ * @param appToken - 多维表格app_token
+ * @param tableId - 表格table_id
+ * @param filter - 基础筛选条件
+ * @returns 所有记录
+ */
+export async function queryAllRecords(
+  appToken: string = config.feishu.appToken,
+  tableId: string = config.feishu.recordTableId,
+  filter?: Omit<RecordFilter, 'page_token'>
+): Promise<BitableRecord[]> {
+  const items: BitableRecord[] = [];
+  let pageToken: string | undefined;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await queryRecords(appToken, tableId, {
+      ...filter,
+      page_size: filter?.page_size || 500,
+      page_token: pageToken,
+    });
+
+    items.push(...(response.items || []));
+    hasMore = response.has_more;
+    pageToken = response.page_token;
+  }
+
+  return items;
 }
 
 /**
@@ -107,17 +141,17 @@ export async function queryRecordsByDateAndPerson(
       page_size: 500,
     };
 
-    const response = await queryRecords(
+    const records = await queryAllRecords(
       config.feishu.appToken,
-      config.feishu.tableId,
+      config.feishu.recordTableId,
       filter
     );
 
-    console.log('[Bitable Query] Got', response.items?.length || 0, 'total records');
+    console.log('[Bitable Query] Got', records.length, 'total records');
 
     // 打印第一条记录看看字段的格式
-    if (response.items && response.items.length > 0) {
-      console.log('[Bitable Query] Sample record fields:', JSON.stringify(response.items[0].fields, null, 2));
+    if (records.length > 0) {
+      console.log('[Bitable Query] Sample record fields:', JSON.stringify(records[0].fields, null, 2));
     }
 
     // 在客户端进行日期和人员过滤
@@ -125,7 +159,7 @@ export async function queryRecordsByDateAndPerson(
     targetDate.setHours(0, 0, 0, 0); // 重置为当天0点
     const targetTimestamp = targetDate.getTime();
 
-    const filteredRecords = response.items.filter((record: BitableRecord) => {
+    const filteredRecords = records.filter((record: BitableRecord) => {
       // 检查日期
       const recordDate = record.fields['记录日期'] as number;
       if (!recordDate) return false;
@@ -178,7 +212,7 @@ export async function queryRecordsByDateAndPerson(
 export async function createRecords(
   records: BitableRecord[],
   appToken: string = config.feishu.appToken,
-  tableId: string = config.feishu.tableId
+  tableId: string = config.feishu.recordTableId
 ): Promise<CreateRecordsResponse> {
   try {
     if (records.length === 0) {
@@ -220,7 +254,7 @@ export async function updateRecord(
   recordId: string,
   fields: Record<string, unknown>,
   appToken: string = config.feishu.appToken,
-  tableId: string = config.feishu.tableId
+  tableId: string = config.feishu.recordTableId
 ): Promise<BitableRecord> {
   try {
     const token = await getTenantAccessToken();
@@ -240,6 +274,33 @@ export async function updateRecord(
 }
 
 /**
+ * 获取单条记录
+ *
+ * @param recordId - 记录ID
+ * @param appToken - 多维表格app_token
+ * @param tableId - 表格table_id
+ * @returns 记录详情
+ */
+export async function getRecord(
+  recordId: string,
+  appToken: string = config.feishu.appToken,
+  tableId: string = config.feishu.recordTableId
+): Promise<BitableRecord> {
+  try {
+    const token = await getTenantAccessToken();
+    const client = feishuClient.withAuth(token);
+
+    const url = `/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`;
+    const response = await client.get<{ record: BitableRecord }>(url);
+
+    return response.record;
+  } catch (error) {
+    console.error('Failed to get record:', error);
+    throw new Error('获取记录失败');
+  }
+}
+
+/**
  * 删除记录
  *
  * @param recordId - 记录ID
@@ -249,7 +310,7 @@ export async function updateRecord(
 export async function deleteRecord(
   recordId: string,
   appToken: string = config.feishu.appToken,
-  tableId: string = config.feishu.tableId
+  tableId: string = config.feishu.recordTableId
 ): Promise<void> {
   try {
     const token = await getTenantAccessToken();
@@ -277,7 +338,7 @@ export async function deleteRecord(
  */
 export async function getTableFields(
   appToken: string = config.feishu.appToken,
-  tableId: string = config.feishu.tableId
+  tableId: string = config.feishu.recordTableId
 ): Promise<BitableField[]> {
   try {
     const token = await getTenantAccessToken();
@@ -291,38 +352,5 @@ export async function getTableFields(
   } catch (error) {
     console.error('Failed to get table fields:', error);
     throw new Error('获取字段配置失败');
-  }
-}
-
-/**
- * 从字段配置中提取"事项"字段的选项列表
- *
- * @returns 事项选项数组
- */
-export async function getTaskOptions(): Promise<string[]> {
-  try {
-    const fields = await getTableFields();
-
-    // 查找"事项"字段
-    const taskField = fields.find((field) => field.field_name === '事项');
-
-    if (!taskField || !taskField.property) {
-      console.warn('未找到"事项"字段或字段没有配置选项');
-      return [];
-    }
-
-    // 提取选项（具体结构可能需要根据实际API响应调整）
-    // 飞书Bitable的选项通常在 property.options 中
-    const options = (taskField.property as { options?: Array<{ name: string }> })
-      ?.options;
-
-    if (!options) {
-      return [];
-    }
-
-    return options.map((opt) => opt.name);
-  } catch (error) {
-    console.error('Failed to get task options:', error);
-    throw new Error('获取事项选项失败');
   }
 }

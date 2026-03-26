@@ -156,20 +156,27 @@ FEISHU_REDIRECT_URI=https://workload.yourcompany.com/auth/callback
 - [ ] 获取了 `app_secret` (在"凭证与基础信息")
 - [ ] 添加了权限：
   - [ ] `bitable:app` (多维表格)
-  - [ ] `contact:user.base:readonly` (通讯录用户)
-  - [ ] `contact:user.employee_id:readonly` (用户工号)
-- [ ] 发布了权限版本
+  - [ ] `contact:contact.base:readonly` (通讯录基础信息，应用身份权限)
+  - [ ] `contact:department.organize:readonly` (部门组织架构，应用身份权限)
+- [ ] 在 `tenant_access_token` 页签中开通了上述通讯录权限
+- [ ] 创建并发布了权限版本
 - [ ] 配置了重定向URL：`http://localhost:3001/auth/callback`
 
 ### ✅ 多维表格配置
 
 - [ ] 从表格URL获取了 `app_token`
-- [ ] 从表格URL获取了 `table_id`
-- [ ] 确认表格包含必需字段：
+- [ ] 获取了 4 个业务表的 `table_id`
+- [ ] 确认人力记录表包含必需字段：
   - [ ] 记录日期（日期类型）
   - [ ] 记录人员（人员类型）
-  - [ ] 事项（文本类型）
-  - [ ] 人力占用（数字类型）
+  - [ ] 类型（单选类型）
+  - [ ] 内容（单选类型）
+  - [ ] 细项（单选类型，可留空）
+  - [ ] 人力占用（评级或数值字段）
+- [ ] 确认字典表结构正确：
+  - [ ] 类型字典表包含 `类型`、`关联内容`
+  - [ ] 内容字典表包含 `内容`、`关联细项`
+  - [ ] 细项字典表包含 `细项`
 
 ### ✅ 本地项目配置
 
@@ -177,7 +184,7 @@ FEISHU_REDIRECT_URI=https://workload.yourcompany.com/auth/callback
 - [ ] 填入了 `FEISHU_APP_ID`
 - [ ] 填入了 `FEISHU_APP_SECRET`
 - [ ] 填入了 `FEISHU_APP_TOKEN`
-- [ ] 填入了 `FEISHU_TABLE_ID`
+- [ ] 填入了 `FEISHU_TYPE_TABLE_ID` / `FEISHU_CONTENT_TABLE_ID` / `FEISHU_DETAIL_TABLE_ID` / `FEISHU_RECORD_TABLE_ID`
 - [ ] 填入了 `SESSION_SECRET`
 - [ ] 更新了 `NEXTAUTH_URL=http://localhost:3001`
 - [ ] 更新了 `FEISHU_REDIRECT_URI=http://localhost:3001/auth/callback`
@@ -207,20 +214,26 @@ FEISHU_REDIRECT_URI=https://workload.yourcompany.com/auth/callback
 - 权限未发布或未通过审核
 - Session密钥未配置
 
-### Q3: 飞书界面改版，找不到"安全设置"菜单？
+### Q3: 授权成功后，用户列表接口报 `99991672 Access denied`？
+**A:** 这不是 OAuth 回调本身的问题，而是通讯录接口权限未生效。请检查：
+- `contact:contact.base:readonly`
+- `contact:department.organize:readonly`
+- 两个权限都已在 **应用身份权限 `tenant_access_token`** 下开通
+- 变更后已经重新创建版本并发布
+
+### Q4: 飞书界面改版，找不到"安全设置"菜单？
 **A:** 尝试以下位置：
 - "应用配置" → "安全设置"
 - "开发配置" → "重定向URL"
 - "应用功能" → "网页" → "重定向URL"
 - 或直接在搜索框搜索"重定向URL"
 
-### Q4: 可以配置多个回调URL吗？
+### Q5: 可以配置多个回调URL吗？
 **A:** 可以！建议配置：
-- `http://localhost:3000/auth/callback`（备用端口）
 - `http://localhost:3001/auth/callback`（当前使用）
 - `https://your-domain.com/auth/callback`（生产环境）
 
-### Q5: 生产环境部署后需要修改什么？
+### Q6: 生产环境部署后需要修改什么？
 **A:** 需要：
 1. 在飞书平台添加生产环境的回调URL（https域名）
 2. 更新 `.env` 中的 `NEXTAUTH_URL` 和 `FEISHU_REDIRECT_URI`

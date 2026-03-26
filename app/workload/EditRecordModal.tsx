@@ -109,10 +109,10 @@ export default function EditRecordModal({
           </button>
         </div>
 
-        {/* 事项名称 */}
+        {/* 分类路径 */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            事项
+            分类路径
           </label>
           <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-900">
             {record.task}

@@ -96,10 +96,29 @@ export interface WorkloadRecord {
   记录ID?: string;
   记录日期: number; // Unix时间戳（毫秒）
   记录人员: string; // 用户ID
-  事项: string; // 任务名称
+  类型: string;
+  内容: string;
+  细项?: string;
   人力占用: number; // 0.1 - 1.0
   记录状态?: string;
   创建人?: string;
+}
+
+/**
+ * 分类选项数据结构
+ */
+export interface CategoryOption {
+  recordId: string;
+  label: string;
+}
+
+/**
+ * 分类接口响应数据结构
+ */
+export interface CategoryResponse {
+  items: CategoryOption[];
+  total: number;
+  requiresDetail?: boolean;
 }
 
 /**
@@ -109,7 +128,9 @@ export interface SubmitWorkloadData {
   date: string; // YYYY-MM-DD
   personId: string;
   records: Array<{
-    task: string;
+    typeRecordId: string;
+    contentRecordId: string;
+    detailRecordId?: string;
     workload: number;
   }>;
 }

@@ -1,18 +1,18 @@
-# 飞书人力占用记录系统
+# 飞书人力占用记录系统EX
 
-基于 Next.js 15 + 飞书多维表格API 的人力工作记录系统。
+基于 Next.js 15 + 飞书多维表格 API 的人力工作记录系统，支持 `类型 -> 内容 -> 细项` 三级联动录入。
 
 ## 功能特性
 
 - **飞书OAuth登录**：安全的企业身份验证
 - **实时数据同步**：
   - 自动获取企业成员列表
-  - 动态加载事项选项（从多维表格字段配置）
+  - 动态加载类型、内容、细项三级字典
   - 实时查询已有记录
   - 手动刷新已有记录
 - **自定义表单组件**：
   - **日期选择器**：自定义日历界面，支持中文本地化，月份导航和快速跳转今天
-  - **人员/事项选择器**：
+  - **人员/分类选择器**：
     - 搜索过滤：快速查找选项
     - 图标装饰：用户和文件图标区分不同类型
     - 智能弹出方向：自动检测空间，向上或向下弹出，避免遮挡
@@ -28,7 +28,7 @@
   - 点击确认：快速选择人力占用
   - 不同等级显示不同表情（🙂😊😄🤩）
 - **智能验证**：
-  - 前端实时验证：事项为空或人力未选时提交按钮置灰
+  - 前端实时验证：类型、内容、必要细项为空或人力未选时提交按钮置灰
   - 防止超出1.0人天限制
   - 自动计算已占用+新增总计
   - 编辑时防止总人力超过1.0
@@ -85,6 +85,7 @@
 > **整体风格**：现代简约（Modern Minimalism）+ 柔和界面（Soft UI）
 >
 > **具体要求**：
+>
 > 1. **背景**：使用柔和的渐变背景（从浅灰到浅蓝再到淡紫）
 > 2. **卡片**：纯白色背景 + 柔和阴影 + 大圆角
 > 3. **间距**：增加卡片间距和内边距，营造呼吸感
@@ -102,6 +103,7 @@
 ### 技术实现要点
 
 **Tailwind CSS 关键类**：
+
 - 纯色卡片: `bg-white`
 - 渐变: `bg-gradient-to-br from-{color} via-{color} to-{color}`
 - 阴影层次: `shadow-lg` → `hover:shadow-xl`
@@ -109,6 +111,7 @@
 - 变换: `hover:-translate-y-0.5` / `hover:scale-105`
 
 **组件示例**：
+
 ```tsx
 // 柔和卡片
 <div className="bg-white rounded-2xl shadow-lg
@@ -155,12 +158,16 @@ cp .env.example .env
 ```
 
 需要配置的变量：
+
 - `FEISHU_APP_ID`: 飞书应用ID
 - `FEISHU_APP_SECRET`: 飞书应用密钥
 - `FEISHU_APP_TOKEN`: 多维表格app_token（从URL获取）
-- `FEISHU_TABLE_ID`: 表格table_id（从URL获取）
+- `FEISHU_TYPE_TABLE_ID`: 类型字典表table_id
+- `FEISHU_CONTENT_TABLE_ID`: 内容字典表table_id
+- `FEISHU_DETAIL_TABLE_ID`: 细项字典表table_id
+- `FEISHU_RECORD_TABLE_ID`: 人力记录表table_id
 - `FEISHU_DEPARTMENT_ID`: 部门ID（open_department_id，如 `od-xxx`，用于获取部门成员列表）
-- `NEXTAUTH_URL`: 服务访问地址（如 `http://localhost:3000`，端口修改时需同步更新）
+- `NEXTAUTH_URL`: 服务访问地址（如 `http://localhost:3001`，端口修改时需同步更新）
 - `FEISHU_REDIRECT_URI`: OAuth 回调地址（需与飞书开放平台配置完全一致）
 - `SESSION_SECRET`: 会话密钥（随机生成）
 - `FEISHU_API_BASE_URL`: 飞书API域名（中国版 `https://open.feishu.cn`，国际版 `https://open.larksuite.com`）
@@ -171,7 +178,7 @@ cp .env.example .env
 npm run dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000) 查看应用。
+打开 [http://localhost:3001](http://localhost:3001) 查看应用。
 
 ### 4. 构建生产版本
 
@@ -198,9 +205,14 @@ npm start
 ### 必要权限
 
 在飞书开放平台需要开通以下权限：
+
 - `bitable:app` - 访问多维表格
-- `contact:user.base:readonly` - 获取通讯录用户基本信息
-- `contact:user.employee_id:readonly` - 获取用户employee_id
+- `contact:contact.base:readonly` - 获取通讯录基础信息（应用身份权限）
+- `contact:department.organize:readonly` - 获取通讯录部门组织架构信息（应用身份权限）
+
+注意：
+- 以上通讯录权限需要在“应用身份权限 tenant_access_token”页签中开通并发布版本。
+- 如果未开通，获取成员列表时可能出现 `99991672 Access denied`。
 
 ## Docker部署
 
@@ -217,11 +229,14 @@ docker compose up -d --build
 构建镜像时需要将环境变量以 `--build-arg` 形式传入（也可直接使用上面的 Docker Compose 方式）。
 
 ```bash
-docker build -t feishu-workload-tracker \
+docker build -t feishu-workload-tracker-ex \
   --build-arg FEISHU_APP_ID \
   --build-arg FEISHU_APP_SECRET \
   --build-arg FEISHU_APP_TOKEN \
-  --build-arg FEISHU_TABLE_ID \
+  --build-arg FEISHU_TYPE_TABLE_ID \
+  --build-arg FEISHU_CONTENT_TABLE_ID \
+  --build-arg FEISHU_DETAIL_TABLE_ID \
+  --build-arg FEISHU_RECORD_TABLE_ID \
   --build-arg FEISHU_DEPARTMENT_ID \
   --build-arg SESSION_SECRET \
   --build-arg NEXTAUTH_URL \
@@ -232,7 +247,7 @@ docker build -t feishu-workload-tracker \
 ### 运行容器
 
 ```bash
-docker run -p 3000:3000 --env-file .env feishu-workload-tracker
+docker run -p 3001:3001 --env-file .env feishu-workload-tracker-ex
 ```
 
 如修改 `.env` 中的变量后需要重新构建镜像，请执行 `docker compose up -d --build`。
@@ -289,7 +304,7 @@ curl -I "https://你的域名/workload?v=check"
 │   │   └── feishu/           # 飞书数据API
 │   │       ├── records/      # 记录管理API
 │   │       │   └── [id]/     # 单条记录操作（编辑/删除）
-│   │       ├── tasks/        # 获取事项选项
+│   │       ├── categories/   # 获取三级分类选项
 │   │       └── users/        # 获取用户列表
 │   ├── login/                # 登录页面
 │   ├── workload/             # 主记录页面
@@ -307,7 +322,8 @@ curl -I "https://你的域名/workload?v=check"
 │   ├── feishu/               # 飞书API服务
 │   │   ├── client.ts         # HTTP客户端
 │   │   ├── auth.ts           # 认证管理
-│   │   ├── bitable.ts        # 多维表格操作
+│   │   ├── bitable.ts        # 多维表格通用操作
+│   │   ├── workload.ts       # 人力业务字典与格式化逻辑
 │   │   └── users.ts          # 用户API
 │   └── session.ts            # Session管理
 ├── types/                    # TypeScript类型定义
@@ -339,14 +355,15 @@ curl -I "https://你的域名/workload?v=check"
    - 点击刷新按钮手动更新记录
 4. **编辑已有记录**：
    - 点击记录卡片上的编辑按钮
-   - 修改事项或人力占用
+   - 修改分类路径对应记录的人力占用
    - 系统自动校验总人力不超过1.0
 5. **删除记录**：
    - 点击记录卡片上的删除按钮
    - 确认删除弹窗，防止误操作
 6. **添加新记录**：
    - 点击"+ 添加记录"按钮
-   - 从下拉列表选择工作事项（支持搜索过滤）
+   - 先选择类型，再选择关联内容，必要时再选择细项
+   - 下一级选项加载完成前不可操作
    - 使用笑脸选择器选择人力占用：
      - 10个笑脸代表0.1-1.0人天
      - 鼠标悬停预览选择结果
@@ -354,7 +371,8 @@ curl -I "https://你的域名/workload?v=check"
    - 可添加多条记录
 7. **提交记录**：
    - 系统自动验证：
-     - 所有记录必须选择事项
+     - 所有记录必须选择类型和内容
+     - 有细项的内容必须补选细项
      - 所有记录必须选择人力占用
      - 总人力不能超过1.0人天
    - 验证通过后提交按钮可点击
@@ -362,12 +380,12 @@ curl -I "https://你的域名/workload?v=check"
 
 ### 笑脸选择器说明
 
-| 笑脸数量 | 人力占用 | 表情等级 |
-|---------|---------|---------|
-| 1-3个 | 0.1-0.3 | 🙂 轻松 |
-| 4-6个 | 0.4-0.6 | 😊 适中 |
-| 7-8个 | 0.7-0.8 | 😄 忙碌 |
-| 9-10个 | 0.9-1.0 | 🤩 满负荷 |
+| 笑脸数量 | 人力占用 | 表情等级  |
+| -------- | -------- | --------- |
+| 1-3个    | 0.1-0.3  | 🙂 轻松   |
+| 4-6个    | 0.4-0.6  | 😊 适中   |
+| 7-8个    | 0.7-0.8  | 😄 忙碌   |
+| 9-10个   | 0.9-1.0  | 🤩 满负荷 |
 
 ### 提示信息说明
 

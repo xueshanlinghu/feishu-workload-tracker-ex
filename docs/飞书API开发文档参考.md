@@ -51,9 +51,11 @@ https://open.feishu.cn/document/server-docs/authentication-management/
 https://open.feishu.cn/document/server-docs/contact-v3/
 
 #### 2.1 获取部门用户列表
-- **端点**: `GET /open-apis/contact/v3/users`
-- **文档**: https://open.feishu.cn/document/server-docs/contact-v3/user/list
-- **需要权限**: `contact:user.base:readonly`
+- **端点**: `GET /open-apis/contact/v3/users/find_by_department`
+- **文档**: https://open.feishu.cn/document/server-docs/contact-v3/user/find_by_department
+- **需要权限**:
+  - `contact:contact.base:readonly`
+  - `contact:department.organize:readonly`
 
 #### 2.2 批量获取用户信息
 - **端点**: `POST /open-apis/contact/v3/users/batch_get_id`
@@ -94,6 +96,7 @@ https://open.feishu.cn/document/server-docs/docs/bitable-v1/
 | 10013 | 授权码无效或已过期 | 授权码只能使用一次，重新发起授权 |
 | 20014 | app_access_token无效 | 检查app_id和app_secret是否正确 |
 | 99991668 | redirect_uri不匹配 | 确保redirect_uri与飞书平台配置完全一致 |
+| 99991672 | Access denied | 检查通讯录应用身份权限是否已开通并发布 |
 
 ### Bitable相关错误
 
@@ -114,11 +117,15 @@ https://open.feishu.cn/document/server-docs/docs/bitable-v1/
 1. **`bitable:app`** - 访问多维表格
    文档: https://open.feishu.cn/document/server-docs/docs/bitable-v1/notification
 
-2. **`contact:user.base:readonly`** - 获取通讯录用户基本信息
+2. **`contact:contact.base:readonly`** - 获取通讯录基础信息
    文档: https://open.feishu.cn/document/server-docs/contact-v3/user/list
 
-3. **`contact:user.employee_id:readonly`** - 获取用户工号
-   文档: https://open.feishu.cn/document/server-docs/contact-v3/user/list
+3. **`contact:department.organize:readonly`** - 获取通讯录部门组织架构信息
+   文档: https://open.feishu.cn/document/server-docs/contact-v3/department/parent_department
+
+⚠️ 说明：
+- 以上两个通讯录权限需要在 **应用身份权限 `tenant_access_token`** 页签下开通。
+- 权限变更后必须重新创建版本并发布，否则运行时仍可能报 `99991672 Access denied`。
 
 ### 权限发布流程
 
@@ -202,9 +209,11 @@ https://open.feishu.cn/app/
 **症状**: 调用contact API返回空或报错
 
 **排查步骤**:
-1. 检查是否添加了 `contact:user.base:readonly` 权限
-2. 确认权限版本已发布并生效
-3. 检查tenant_access_token是否有效
+1. 检查是否添加了 `contact:contact.base:readonly` 权限
+2. 检查是否添加了 `contact:department.organize:readonly` 权限
+3. 确认这两个权限是在 **应用身份权限 `tenant_access_token`** 下开通的
+4. 确认权限版本已发布并生效
+5. 检查tenant_access_token是否有效
 
 ### 问题3: 无法写入多维表格
 **症状**: 创建记录失败

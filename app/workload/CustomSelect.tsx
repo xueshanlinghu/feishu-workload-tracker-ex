@@ -8,7 +8,7 @@
 
 import { Fragment, useState, useRef, useEffect } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronsUpDown, Search, User, FileText } from 'lucide-react';
+import { Check, ChevronsUpDown, LoaderCircle, Search, User, FileText } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -23,6 +23,7 @@ interface CustomSelectProps {
   placeholder?: string;
   label?: string;
   disabled?: boolean;
+  loading?: boolean;
   searchable?: boolean;
   showIcon?: boolean;
 }
@@ -34,6 +35,7 @@ export default function CustomSelect({
   placeholder = '请选择',
   label,
   disabled = false,
+  loading = false,
   searchable = true,
   showIcon = true,
 }: CustomSelectProps) {
@@ -82,6 +84,8 @@ export default function CustomSelect({
     }
   };
 
+  const isDisabled = disabled || loading;
+
   return (
     <div className="w-full">
       {label && (
@@ -90,7 +94,7 @@ export default function CustomSelect({
         </label>
       )}
 
-      <Listbox value={value} onChange={onChange} disabled={disabled}>
+      <Listbox value={value} onChange={onChange} disabled={isDisabled}>
         {() => (
           <div className="relative">
             <Listbox.Button
@@ -113,7 +117,11 @@ export default function CustomSelect({
                   </span>
                 </span>
                 <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                  <ChevronsUpDown className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                  {loading ? (
+                    <LoaderCircle className="h-5 w-5 text-blue-500 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ChevronsUpDown className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                  )}
                 </span>
               </Listbox.Button>
 

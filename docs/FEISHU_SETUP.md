@@ -1,6 +1,6 @@
 # 飞书应用配置指南
 
-本文档详细说明如何在飞书开放平台创建应用并配置权限。
+本文档详细说明如何在飞书开放平台创建应用，并为 `feishu-workload-tracker-ex` 配置权限。
 
 ## 1. 创建飞书应用
 
@@ -38,13 +38,18 @@
   - 描述：允许应用读取和操作多维表格
 
 #### 通讯录权限
-- `contact:user.base:readonly` - 获取通讯录用户基本信息
-  - 描述：允许应用获取用户姓名、邮箱等基本信息
-- `contact:user.employee_id:readonly` - 获取用户employee_id
-  - 描述：允许应用获取用户工号
+- `contact:contact.base:readonly` - 获取通讯录基础信息
+  - 描述：允许应用获取用户姓名、邮箱、头像等基础信息
+- `contact:department.organize:readonly` - 获取通讯录部门组织架构信息
+  - 描述：允许应用按部门拉取成员列表
 
 #### 身份验证权限（OAuth相关）
 这些权限通常会自动添加，无需手动配置。
+
+⚠️ **重要**：
+- 通讯录权限需要在 **应用身份权限 `tenant_access_token`** 页签中开通。
+- 修改权限后必须重新**创建版本并发布**。
+- 如果未正确开通或未发布，获取成员列表时常见报错是 `99991672 Access denied`。
 
 ### 2.2 发布权限版本
 
@@ -62,7 +67,7 @@
 
 **开发环境：**
 ```
-http://localhost:3000/auth/callback
+http://localhost:3001/auth/callback
 ```
 
 **生产环境：**
@@ -82,12 +87,12 @@ https://your-domain.com/auth/callback
 
 浏览器地址栏URL格式示例：
 ```
-https://xxx.feishu.cn/base/bascnABC123DEF456?table=tblXYZ789&view=vewQWE123
+https://xxx.feishu.cn/base/app_token_xxx?table=tbl_record_xxx&view=vew_xxx
 ```
 
 提取参数：
-- **app_token**: `bascnABC123DEF456`（`base/`后面到`?`之间）
-- **table_id**: `tblXYZ789`（`table=`后面的值）
+- **app_token**: `app_token_xxx`（`base/`后面到`?`之间）
+- **table_id**: `tbl_record_xxx`（`table=`后面的值）
 
 ### 4.3 表格字段说明
 
@@ -98,7 +103,9 @@ https://xxx.feishu.cn/base/bascnABC123DEF456?table=tblXYZ789&view=vewQWE123
 | 记录ID | 自动编号 | 自动生成的记录序号 |
 | 记录日期 | 日期 | 记录的日期 |
 | 记录人员 | 人员 | 工作负载的归属人员 |
-| 事项 | 单选/文本 | 工作事项名称 |
+| 类型 | 单选 | 一级分类名称 |
+| 内容 | 单选 | 二级分类名称 |
+| 细项 | 单选 | 三级分类名称，无细项时可留空 |
 | 人力占用 | 评级 | 人力占用量，配置10个选项（1,2,3...10），显示为笑脸 |
 | 人力占用计算 | 公式 | 公式字段：`人力占用/10`，自动计算实际人力值（0.1-1.0） |
 | 记录状态 | 单选/文本 | 记录状态（如：未发周报） |
@@ -119,17 +126,18 @@ https://xxx.feishu.cn/base/bascnABC123DEF456?table=tblXYZ789&view=vewQWE123
    - 公式：`人力占用/10`
    - 这样可以自动将评级数字转换为实际的人力值（0.1-1.0）
 
-### 4.5 配置事项选项（可选）
+### 4.5 配置三级字典表
 
-如果"事项"字段是单选类型，可以预先配置选项：
-1. 点击字段设置
-2. 选择"单选"类型
-3. 添加常用事项选项，如：
-   - 电子课题系统客户咨询处理
-   - QS客户沟通理
-   - 办公电脑配件人员服务
-   - 周报、月报、季报
-   - 其他
+推荐在同一个多维表格应用中维护 4 张业务表：
+1. **类型字典表**：包含 `类型`、`关联内容`
+2. **内容字典表**：包含 `内容`、`关联细项`
+3. **细项字典表**：包含 `细项`
+4. **人力记录表**：包含 `记录日期`、`记录人员`、`类型`、`内容`、`细项`、`人力占用` 等字段
+
+其中：
+- `关联内容` 应关联到内容字典表记录
+- `关联细项` 应关联到细项字典表记录
+- 如果某个内容没有三级菜单，可以不配置 `关联细项`
 
 ## 5. 配置环境变量
 
@@ -141,10 +149,13 @@ cp .env.example .env
 
 # 编辑.env文件
 # 填入以下信息：
-FEISHU_APP_ID=cli_xxxxxxxxx          # 步骤1.3获取
-FEISHU_APP_SECRET=xxxxxxxxx          # 步骤1.3获取
-FEISHU_APP_TOKEN=bascnABC123DEF456  # 步骤4.2获取
-FEISHU_TABLE_ID=tblXYZ789            # 步骤4.2获取
+FEISHU_APP_ID=cli_xxxxxxxxx
+FEISHU_APP_SECRET=app_secret_xxxxxxxxx
+FEISHU_APP_TOKEN=app_token_xxxxxxxxx
+FEISHU_TYPE_TABLE_ID=tbl_type_xxxxxxxxx
+FEISHU_CONTENT_TABLE_ID=tbl_content_xxxxxxxxx
+FEISHU_DETAIL_TABLE_ID=tbl_detail_xxxxxxxxx
+FEISHU_RECORD_TABLE_ID=tbl_record_xxxxxxxxx
 ```
 
 ## 6. 生成Session密钥
@@ -156,11 +167,9 @@ FEISHU_TABLE_ID=tblXYZ789            # 步骤4.2获取
 openssl rand -base64 32
 ```
 
-### PowerShell (Windows):
-```powershell
-$bytes = New-Object byte[] 32
-[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-[Convert]::ToBase64String($bytes)
+### Node.js（跨平台）:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
 将生成的密钥填入`.env`文件的`SESSION_SECRET`变量。
@@ -175,7 +184,7 @@ npm run dev
 
 ### 7.2 访问应用
 
-打开浏览器访问：http://localhost:3000
+打开浏览器访问：http://localhost:3001
 
 ### 7.3 测试OAuth登录
 
@@ -186,20 +195,20 @@ npm run dev
 ### 7.4 测试功能
 
 1. 选择日期和人员
-2. 添加工作负载记录
+2. 依次选择类型、内容，以及必要时的细项
 3. 提交到飞书表格
 4. 在飞书表格中查看记录
 
 ## 8. 常见问题
 
 ### Q: 提示"缺少权限"？
-A: 检查是否已添加所需权限，并确保权限版本已发布。
+A: 检查是否已在 **应用身份权限 `tenant_access_token`** 下开通所需权限，并确保权限版本已发布。
 
 ### Q: OAuth回调失败？
 A: 检查回调URL配置是否正确，确保与`.env`中的`FEISHU_REDIRECT_URI`完全一致。
 
 ### Q: 无法获取用户列表？
-A: 确保已添加`contact:user.base:readonly`权限。
+A: 确保已添加并发布 `contact:contact.base:readonly` 与 `contact:department.organize:readonly`。若日志出现 `99991672 Access denied`，通常表示这两个应用身份权限还未生效。
 
 ### Q: 无法写入多维表格？
 A: 确保已添加`bitable:app`权限，并且app_token和table_id正确。
