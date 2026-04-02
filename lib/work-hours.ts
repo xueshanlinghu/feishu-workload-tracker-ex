@@ -7,6 +7,7 @@
 export const STANDARD_WORKDAY_HOURS = 8;
 export const MAX_DAILY_HOURS = 14;
 export const MIN_RECORD_HOURS = 1;
+export type DailyHoursStatus = 'healthy' | 'warning' | 'danger';
 
 /**
  * 将小时数折算为人天值，并保留 1 位小数。
@@ -29,4 +30,23 @@ export function formatHoursValue(hours: number): string {
  */
 export function isValidRecordHours(value: number): boolean {
   return Number.isInteger(value) && value >= MIN_RECORD_HOURS && value <= MAX_DAILY_HOURS;
+}
+
+/**
+ * 根据当天累计工时判断当前状态。
+ *
+ * - 8 小时及以内：正常工作量
+ * - 超过 8 小时但不超过 14 小时：超出标准工时，需要提醒
+ * - 超过 14 小时：超出系统允许上限
+ */
+export function getDailyHoursStatus(hours: number): DailyHoursStatus {
+  if (hours > MAX_DAILY_HOURS) {
+    return 'danger';
+  }
+
+  if (hours > STANDARD_WORKDAY_HOURS) {
+    return 'warning';
+  }
+
+  return 'healthy';
 }

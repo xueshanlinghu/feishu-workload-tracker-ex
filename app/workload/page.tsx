@@ -23,8 +23,10 @@ import WorkloadSelector from './WorkloadSelector';
 import packageJson from '../../package.json';
 import {
   formatHoursValue,
+  getDailyHoursStatus,
   hoursToWorkloadRatio,
   MAX_DAILY_HOURS,
+  STANDARD_WORKDAY_HOURS,
 } from '@/lib/work-hours';
 
 const SESSION_HEARTBEAT_INTERVAL_MS = 45 * 60 * 1000;
@@ -133,6 +135,7 @@ function WorkloadPageContent() {
   const [selectedPerson, setSelectedPerson] = useState<string>('');
   const [existingRecords, setExistingRecords] = useState<ExistingRecord[]>([]);
   const [existingTotalHours, setExistingTotalHours] = useState<number>(0);
+  const [recordsRefreshToken, setRecordsRefreshToken] = useState(0);
   const [newRecords, setNewRecords] = useState<NewRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingRecords, setIsFetchingRecords] = useState(false);
@@ -222,10 +225,12 @@ function WorkloadPageContent() {
       const data = await response.json();
       setExistingRecords(data.records || []);
       setExistingTotalHours(data.totalHours || 0);
+      setRecordsRefreshToken((current) => current + 1);
     } catch (error) {
       console.error('Failed to fetch records:', error);
       setExistingRecords([]);
       setExistingTotalHours(0);
+      setRecordsRefreshToken((current) => current + 1);
       showError('获取已有记录失败');
     } finally {
       setIsFetchingRecords(false);
@@ -480,6 +485,7 @@ function WorkloadPageContent() {
 
   const newTotalHours = newRecords.reduce((sum, record) => sum + record.hours, 0);
   const finalTotalHours = existingTotalHours + newTotalHours;
+  const finalHoursStatus = getDailyHoursStatus(finalTotalHours);
   const hasSelectedPerson = Boolean(selectedPerson);
   const hasPendingCategoryLoad = newRecords.some(
     (record) => record.isLoadingContents || record.isLoadingDetails
@@ -501,6 +507,25 @@ function WorkloadPageContent() {
     label: user.name,
     icon: 'user',
   }));
+
+  const finalHoursValueColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-green-600';
+  const finalHoursRatioColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-500'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-gray-500';
+  const finalHoursLimitColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-green-600';
 
   const handleSubmit = async () => {
     try {
@@ -649,7 +674,7 @@ function WorkloadPageContent() {
 
     if (percentage >= 70) {
       return {
-        bg: 'bg-gradient-to-br from-orange-50 to-rose-50',
+        bg: 'bg-orange-50',
         border: 'border-orange-200',
         textColor: 'text-orange-700',
         iconBg: 'bg-orange-100',
@@ -658,7 +683,7 @@ function WorkloadPageContent() {
 
     if (percentage >= 40) {
       return {
-        bg: 'bg-gradient-to-br from-sky-50 to-cyan-50',
+        bg: 'bg-sky-50',
         border: 'border-sky-200',
         textColor: 'text-sky-700',
         iconBg: 'bg-sky-100',
@@ -666,7 +691,7 @@ function WorkloadPageContent() {
     }
 
     return {
-      bg: 'bg-gradient-to-br from-emerald-50 to-lime-50',
+      bg: 'bg-emerald-50',
       border: 'border-emerald-200',
       textColor: 'text-emerald-700',
       iconBg: 'bg-emerald-100',
@@ -688,7 +713,7 @@ function WorkloadPageContent() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-5 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-black">工时记录</h1>
+          <h1 className="text-2xl font-bold text-black tracking-tight">人力占用记录 EX</h1>
           <div className="flex items-center space-x-4">
             {currentUser && (
               <span className="text-gray-700 font-medium">欢迎，{currentUser.name}</span>
@@ -853,12 +878,12 @@ function WorkloadPageContent() {
               <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex-1 text-center md:text-left">
                   <h3 className="text-lg font-semibold text-gray-700 mb-1">已占用工时</h3>
-                  <p className="text-sm text-gray-500">当天工作时长统计与 14 小时上限对比</p>
                 </div>
                 <div className="flex justify-center">
                   <CircularProgress
                     current={existingTotalHours}
-                    max={MAX_DAILY_HOURS}
+                    max={STANDARD_WORKDAY_HOURS}
+                    refreshToken={recordsRefreshToken}
                     size={140}
                     strokeWidth={12}
                   />
@@ -1018,15 +1043,14 @@ function WorkloadPageContent() {
                   <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
                     <span className="text-lg font-bold text-gray-900">总计：</span>
                     <span className="text-right">
-                      <span
-                        className={`block text-2xl font-bold ${
-                          finalTotalHours > MAX_DAILY_HOURS ? 'text-red-600' : 'text-green-600'
-                        }`}
-                      >
-                        {formatHoursValue(finalTotalHours)} / {MAX_DAILY_HOURS} 小时
+                      <span className="block text-2xl font-bold">
+                        <span className={finalHoursValueColor}>
+                          {formatHoursValue(finalTotalHours)}
+                        </span>
+                        <span className={finalHoursLimitColor}> / {STANDARD_WORKDAY_HOURS} 小时</span>
                       </span>
-                      <span className="block text-xs text-gray-500">
-                        约 {getHoursRatioText(finalTotalHours)} / {getHoursRatioText(MAX_DAILY_HOURS)}
+                      <span className={`block text-xs ${finalHoursRatioColor}`}>
+                        约 {getHoursRatioText(finalTotalHours)}
                       </span>
                     </span>
                   </div>
@@ -1045,6 +1069,21 @@ function WorkloadPageContent() {
                     <span className="font-medium">总工时超过 14 小时，无法提交</span>
                   </div>
                 )}
+
+                {finalTotalHours > STANDARD_WORKDAY_HOURS &&
+                  finalTotalHours <= MAX_DAILY_HOURS && (
+                    <div className="mt-4 bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-xl flex items-center">
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <span className="font-medium">总工时已超过 8 小时标准工时，可提交，但请留意当天安排</span>
+                    </div>
+                  )}
 
                 {hasPendingCategoryLoad && (
                   <div className="mt-4 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl flex items-center">

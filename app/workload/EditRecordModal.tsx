@@ -15,8 +15,10 @@ import HoursMoodIcon, { getHoursMoodTone } from './HoursMoodIcon';
 import WorkloadSelector from './WorkloadSelector';
 import {
   formatHoursValue,
+  getDailyHoursStatus,
   hoursToWorkloadRatio,
   MAX_DAILY_HOURS,
+  STANDARD_WORKDAY_HOURS,
 } from '@/lib/work-hours';
 
 interface EditRecordModalProps {
@@ -52,9 +54,35 @@ export default function EditRecordModal({
   const newTotalHours = record
     ? currentTotalHours - record.hours + hours
     : currentTotalHours;
+  const totalHoursStatus = getDailyHoursStatus(newTotalHours);
   const isOverLimit = newTotalHours > MAX_DAILY_HOURS;
+  const isOverStandardHours = newTotalHours > STANDARD_WORKDAY_HOURS;
   const hoursChange = record ? hours - record.hours : 0;
   const moodTone = hours > 0 ? getHoursMoodTone(hours) : null;
+  const totalHoursValueColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-emerald-600';
+  const totalHoursRatioColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-500'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-gray-500';
+  const totalHoursLimitColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-emerald-600';
+  const summaryCardClass =
+    totalHoursStatus === 'danger'
+      ? 'border-red-200 bg-red-50'
+      : totalHoursStatus === 'warning'
+        ? 'border-orange-200 bg-orange-50'
+        : 'border-emerald-200 bg-emerald-50';
 
   const handleSubmit = async () => {
     if (!record) return;
@@ -122,7 +150,7 @@ export default function EditRecordModal({
           />
         </div>
 
-        <div className="mb-6 space-y-3 rounded-2xl bg-slate-50 p-5">
+        <div className={`mb-6 space-y-3 rounded-2xl border p-5 ${summaryCardClass}`}>
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-gray-600">新的工时值：</span>
             <span className="flex items-center gap-3">
@@ -156,15 +184,30 @@ export default function EditRecordModal({
 
           <div className="flex items-center justify-between border-t border-gray-200 pt-3">
             <span className="text-sm font-medium text-gray-700">修改后总工时：</span>
-            <span className={`text-right text-lg font-bold ${isOverLimit ? 'text-red-600' : 'text-emerald-600'}`}>
+            <span className="text-right text-lg font-bold">
               <span className="block">
-                {formatHoursValue(newTotalHours)} / {MAX_DAILY_HOURS} 小时
+                <span className={totalHoursValueColor}>{formatHoursValue(newTotalHours)}</span>
+                <span className={totalHoursLimitColor}> / {STANDARD_WORKDAY_HOURS} 小时</span>
               </span>
-              <span className="block text-xs font-medium text-gray-500">
-                约 {hoursToWorkloadRatio(newTotalHours).toFixed(1)} / {hoursToWorkloadRatio(MAX_DAILY_HOURS).toFixed(1)} 人天
+              <span className={`block text-xs font-medium ${totalHoursRatioColor}`}>
+                约 {hoursToWorkloadRatio(newTotalHours).toFixed(1)} 人天
               </span>
             </span>
           </div>
+
+          {!isOverLimit && isOverStandardHours && (
+            <div className="flex items-start gap-2 rounded-2xl border border-orange-200 bg-white/70 p-3">
+              <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-orange-800">已超过 8 小时标准工时</p>
+                <p className="mt-1 text-xs text-orange-700">
+                  修改后总工时为 {formatHoursValue(newTotalHours)} 小时，仍可保存，但请留意当天安排。
+                </p>
+              </div>
+            </div>
+          )}
 
           {isOverLimit && (
             <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3">
