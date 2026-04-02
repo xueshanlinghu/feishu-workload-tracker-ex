@@ -23,8 +23,11 @@ import WorkloadSelector from './WorkloadSelector';
 import packageJson from '../../package.json';
 import {
   formatHoursValue,
+  getMaxRecordHoursForType,
   getDailyHoursStatus,
+  hasFullDayLeaveConflict,
   hoursToWorkloadRatio,
+  isLeaveType,
   MAX_DAILY_HOURS,
   STANDARD_WORKDAY_HOURS,
 } from '@/lib/work-hours';
@@ -47,6 +50,7 @@ interface CategoryItem {
 interface CategoryResponse {
   items: CategoryItem[];
   total: number;
+  requiresContent?: boolean;
   requiresDetail?: boolean;
 }
 
@@ -70,6 +74,7 @@ interface NewRecord {
   detailOptions: SelectOption[];
   isLoadingContents: boolean;
   isLoadingDetails: boolean;
+  contentRequired: boolean;
   detailRequired: boolean;
 }
 
@@ -97,6 +102,7 @@ function createEmptyRecord(): NewRecord {
     detailOptions: [],
     isLoadingContents: false,
     isLoadingDetails: false,
+    contentRequired: false,
     detailRequired: false,
   };
 }
@@ -118,13 +124,14 @@ export default function WorkloadPage() {
 }
 
 function WorkloadPageContent() {
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showWarning } = useToast();
   const router = useRouter();
 
   const contentOptionsCacheRef = useRef<Record<string, SelectOption[]>>({});
   const detailOptionsCacheRef = useRef<
     Record<string, { items: SelectOption[]; requiresDetail: boolean }>
   >({});
+  const contentRequirementCacheRef = useRef<Record<string, boolean>>({});
   const hasTouchedPersonSelectRef = useRef(false);
 
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
@@ -255,21 +262,33 @@ function WorkloadPageContent() {
   }
 
   async function loadContentOptions(recordId: string, typeRecordId: string) {
+    const typeName = typeOptions.find((option) => option.value === typeRecordId)?.label;
+    const maxHoursForType = getMaxRecordHoursForType(typeName);
+    const currentRecord = newRecords.find((record) => record.id === recordId);
+    const shouldClampHours = Boolean(currentRecord && currentRecord.hours > maxHoursForType);
+
     updateNewRecordState(recordId, (record) => ({
       ...record,
       typeRecordId,
       contentRecordId: '',
       detailRecordId: '',
+      hours: Math.min(record.hours, maxHoursForType),
       contentOptions: [],
       detailOptions: [],
       isLoadingContents: true,
       isLoadingDetails: false,
+      contentRequired: true,
       detailRequired: false,
     }));
 
+    if (shouldClampHours) {
+      showWarning(`“${typeName || '当前类型'}” 单条记录最多只能填写 ${maxHoursForType} 小时，已自动调整为 ${maxHoursForType} 小时`);
+    }
+
     try {
       const cachedOptions = contentOptionsCacheRef.current[typeRecordId];
-      if (cachedOptions) {
+      const cachedContentRequired = contentRequirementCacheRef.current[typeRecordId];
+      if (cachedOptions && typeof cachedContentRequired === 'boolean') {
         updateNewRecordState(recordId, (record) => {
           if (record.typeRecordId !== typeRecordId) {
             return record;
@@ -278,6 +297,7 @@ function WorkloadPageContent() {
           return {
             ...record,
             contentOptions: cachedOptions,
+            contentRequired: cachedContentRequired,
             isLoadingContents: false,
           };
         });
@@ -288,7 +308,9 @@ function WorkloadPageContent() {
         `/api/feishu/categories?level=contents&typeRecordId=${typeRecordId}`
       );
       const options = toSelectOptions(data.items || []);
+      const requiresContent = Boolean(data.requiresContent);
       contentOptionsCacheRef.current[typeRecordId] = options;
+      contentRequirementCacheRef.current[typeRecordId] = requiresContent;
 
       updateNewRecordState(recordId, (record) => {
         if (record.typeRecordId !== typeRecordId) {
@@ -298,6 +320,7 @@ function WorkloadPageContent() {
         return {
           ...record,
           contentOptions: options,
+          contentRequired: requiresContent,
           isLoadingContents: false,
         };
       });
@@ -306,6 +329,7 @@ function WorkloadPageContent() {
       updateNewRecordState(recordId, (record) => ({
         ...record,
         contentOptions: [],
+        contentRequired: true,
         isLoadingContents: false,
       }));
       showError(error instanceof Error ? error.message : '获取内容选项失败');
@@ -503,13 +527,31 @@ function WorkloadPageContent() {
 
   const newTotalHours = newRecords.reduce((sum, record) => sum + record.hours, 0);
   const finalTotalHours = existingTotalHours + newTotalHours;
+  const existingLeaveHours = existingRecords
+    .filter((record) => isLeaveType(record.type))
+    .reduce((sum, record) => sum + record.hours, 0);
+  const newLeaveHours = newRecords.reduce((sum, record) => {
+    const typeName = typeOptions.find((option) => option.value === record.typeRecordId)?.label;
+    return isLeaveType(typeName) ? sum + record.hours : sum;
+  }, 0);
+  const leaveHoursLimit = getMaxRecordHoursForType('休假');
+  const finalLeaveHours = existingLeaveHours + newLeaveHours;
+  const hasFullDayLeaveRuleConflict = hasFullDayLeaveConflict(finalTotalHours, finalLeaveHours);
+  const hasBlockingSubmitIssue =
+    finalTotalHours > MAX_DAILY_HOURS ||
+    finalLeaveHours > leaveHoursLimit ||
+    hasFullDayLeaveRuleConflict;
   const finalHoursStatus = getDailyHoursStatus(finalTotalHours);
   const hasSelectedPerson = Boolean(selectedPerson);
   const hasPendingCategoryLoad = newRecords.some(
     (record) => record.isLoadingContents || record.isLoadingDetails
   );
   const hasInvalidRecords = newRecords.some((record) => {
-    if (!record.typeRecordId || !record.contentRecordId || record.hours === 0) {
+    if (!record.typeRecordId || record.hours === 0) {
+      return true;
+    }
+
+    if (record.contentRequired && !record.contentRecordId) {
       return true;
     }
 
@@ -574,6 +616,16 @@ function WorkloadPageContent() {
         return;
       }
 
+      if (finalLeaveHours > leaveHoursLimit) {
+        showError(`“休假” 当天累计不能超过 ${leaveHoursLimit} 小时`);
+        return;
+      }
+
+      if (hasFullDayLeaveRuleConflict) {
+        showError(`“休假” 达到 ${leaveHoursLimit} 小时后，不允许当天再提交其他工作事项`);
+        return;
+      }
+
       const response = await fetch('/api/feishu/records', {
         method: 'POST',
         headers: {
@@ -584,7 +636,7 @@ function WorkloadPageContent() {
           personId: selectedPerson,
           records: newRecords.map((record) => ({
             typeRecordId: record.typeRecordId,
-            contentRecordId: record.contentRecordId,
+            contentRecordId: record.contentRequired ? record.contentRecordId : undefined,
             detailRecordId: record.detailRequired ? record.detailRecordId : undefined,
             hours: record.hours,
           })),
@@ -975,9 +1027,16 @@ function WorkloadPageContent() {
                           ? '-- 请先选择类型 --'
                           : record.isLoadingContents
                             ? '-- 内容加载中 --'
+                            : !record.contentRequired
+                              ? '-- 当前类型无内容 --'
                             : '-- 选择内容 --'
                       }
-                      disabled={isFetchingRecords || isSubmitting || !record.typeRecordId}
+                      disabled={
+                        isFetchingRecords ||
+                        isSubmitting ||
+                        !record.typeRecordId ||
+                        !record.contentRequired
+                      }
                       loading={record.isLoadingContents}
                       searchable={true}
                       showIcon={true}
@@ -988,7 +1047,9 @@ function WorkloadPageContent() {
                       onChange={(value) => handleDetailChange(record.id, value)}
                       options={record.detailOptions}
                       placeholder={
-                        !record.contentRecordId
+                        !record.contentRequired
+                          ? '-- 当前类型无细项 --'
+                          : !record.contentRecordId
                           ? '-- 请先选择内容 --'
                           : record.isLoadingDetails
                             ? '-- 细项加载中 --'
@@ -999,6 +1060,7 @@ function WorkloadPageContent() {
                       disabled={
                         isFetchingRecords ||
                         isSubmitting ||
+                        !record.contentRequired ||
                         !record.contentRecordId ||
                         !record.detailRequired
                       }
@@ -1011,6 +1073,9 @@ function WorkloadPageContent() {
                         value={record.hours}
                         onChange={(value) => handleHoursChange(record.id, value)}
                         disabled={isFetchingRecords || isSubmitting}
+                        maxHours={getMaxRecordHoursForType(
+                          typeOptions.find((option) => option.value === record.typeRecordId)?.label
+                        )}
                         mode="dropdown"
                       />
                     </div>
@@ -1024,7 +1089,16 @@ function WorkloadPageContent() {
                     </div>
                   </div>
 
-                  {record.contentRecordId &&
+                  {record.typeRecordId && !record.contentRequired && (
+                    <p className="mt-3 text-sm text-amber-600">
+                      {isLeaveType(typeOptions.find((option) => option.value === record.typeRecordId)?.label)
+                        ? '“休假”类型无需内容和细项，可直接提交“类型 + 工时”记录，且单条最多 8 小时。'
+                        : '当前类型没有内容和细项，可直接提交“类型 + 工时”记录。'}
+                    </p>
+                  )}
+
+                  {record.contentRequired &&
+                    record.contentRecordId &&
                     !record.isLoadingDetails &&
                     !record.detailRequired && (
                       <p className="mt-3 text-sm text-amber-600">
@@ -1088,7 +1162,36 @@ function WorkloadPageContent() {
                   </div>
                 )}
 
-                {finalTotalHours > STANDARD_WORKDAY_HOURS &&
+                {finalLeaveHours > leaveHoursLimit && (
+                  <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
+                    <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <span className="font-medium">“休假” 当天累计超过 8 小时，无法提交</span>
+                  </div>
+                )}
+
+                {hasFullDayLeaveRuleConflict && (
+                  <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
+                    <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <span className="font-medium">休假达到 8 小时后，当天不能再有其他工作事项</span>
+                  </div>
+                )}
+
+                {!hasBlockingSubmitIssue &&
+                  finalTotalHours > STANDARD_WORKDAY_HOURS &&
                   finalTotalHours <= MAX_DAILY_HOURS && (
                     <div className="mt-4 bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-xl flex items-center">
                       <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1128,7 +1231,7 @@ function WorkloadPageContent() {
                       />
                     </svg>
                     <span className="font-medium">
-                      请完善所有记录（选择类型、内容、必要时选择细项，并设置工时）
+                      请完善所有记录（选择类型、必要时选择内容/细项，并设置工时）
                     </span>
                   </div>
                 )}
@@ -1142,7 +1245,7 @@ function WorkloadPageContent() {
                     isFetchingRecords ||
                     !hasSelectedPerson ||
                     hasPendingCategoryLoad ||
-                    finalTotalHours > MAX_DAILY_HOURS ||
+                    hasBlockingSubmitIssue ||
                     newRecords.length === 0 ||
                     hasInvalidRecords
                   }
@@ -1167,6 +1270,7 @@ function WorkloadPageContent() {
         onSuccess={handleEditSuccess}
         onError={handleEditError}
         currentTotalHours={existingTotalHours}
+        currentLeaveHours={existingLeaveHours}
       />
 
       <DeleteConfirmModal

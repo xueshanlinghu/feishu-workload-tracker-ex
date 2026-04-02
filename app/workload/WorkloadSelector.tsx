@@ -24,12 +24,14 @@ interface WorkloadSelectorProps {
   onChange: (value: number) => void; // 值变化回调
   disabled?: boolean; // 是否禁用
   mode?: 'inline' | 'dropdown'; // 展示模式
+  maxHours?: number; // 当前类型允许选择的最大工时
 }
 
 interface PickerContentProps {
   value: number;
   onChange: (value: number) => void;
   disabled: boolean;
+  maxHours: number;
   onSelect?: () => void;
 }
 
@@ -37,12 +39,13 @@ function PickerContent({
   value,
   onChange,
   disabled,
+  maxHours,
   onSelect,
 }: PickerContentProps) {
   const [hoverHours, setHoverHours] = useState<number>(0);
   const previewHours = hoverHours || value;
   const hourSlots = Array.from(
-    { length: MAX_DAILY_HOURS - MIN_RECORD_HOURS + 1 },
+    { length: maxHours - MIN_RECORD_HOURS + 1 },
     (_, index) => index + MIN_RECORD_HOURS
   );
   const previewTone = previewHours > 0 ? getHoursMoodTone(previewHours) : null;
@@ -107,7 +110,7 @@ function PickerContent({
             <p className="text-xs text-slate-500">
               {previewHours > 0
                 ? `约 ${hoursToWorkloadRatio(previewHours).toFixed(1)} 人天${previewTone ? ` · ${previewTone.label}` : ''}`
-                : '1 天标准工时按 8 小时折算'}
+                : `1 天标准工时按 8 小时折算${maxHours < MAX_DAILY_HOURS ? `，当前类型最多 ${maxHours} 小时` : ''}`}
             </p>
           </div>
         </div>
@@ -134,6 +137,7 @@ function DropdownPanel({
   value,
   onChange,
   disabled,
+  maxHours,
   onSelect,
 }: DropdownPanelProps) {
   useLayoutEffect(() => {
@@ -163,6 +167,7 @@ function DropdownPanel({
           value={value}
           onChange={onChange}
           disabled={disabled}
+          maxHours={maxHours}
           onSelect={onSelect}
         />
       </Popover.Panel>
@@ -175,8 +180,10 @@ export default function WorkloadSelector({
   onChange,
   disabled = false,
   mode = 'inline',
+  maxHours = MAX_DAILY_HOURS,
 }: WorkloadSelectorProps) {
-  const selectedTone = value > 0 ? getHoursMoodTone(value) : null;
+  const safeMaxHours = Math.min(MAX_DAILY_HOURS, Math.max(MIN_RECORD_HOURS, maxHours));
+  const selectedTone = value > 0 ? getHoursMoodTone(Math.min(value, safeMaxHours)) : null;
   const [dropdownDirection, setDropdownDirection] = useState<'down' | 'up'>('down');
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -220,6 +227,7 @@ export default function WorkloadSelector({
         value={value}
         onChange={onChange}
         disabled={disabled}
+        maxHours={safeMaxHours}
       />
     );
   }
@@ -289,6 +297,7 @@ export default function WorkloadSelector({
             value={value}
             onChange={onChange}
             disabled={disabled}
+            maxHours={safeMaxHours}
             onSelect={close}
           />
         </>

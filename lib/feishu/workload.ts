@@ -65,7 +65,8 @@ export interface DetailCategoryResponse {
 
 export interface ResolvedCategorySelection {
   typeName: string;
-  contentName: string;
+  contentName?: string;
+  requiresContent: boolean;
   detailName?: string;
   requiresDetail: boolean;
 }
@@ -136,7 +137,7 @@ function sortBySequence<T extends { sequence: number; name: string }>(items: T[]
 /**
  * 构建分类展示文案
  */
-export function buildTaskLabel(type: string, content: string, detail?: string): string {
+export function buildTaskLabel(type: string, content?: string, detail?: string): string {
   const parts = [type, content, detail].filter(Boolean);
   return parts.join(' / ');
 }
@@ -302,7 +303,7 @@ export async function getTypeCategoryOptions(): Promise<CategoryOption[]> {
  */
 export async function getContentCategoryOptions(
   typeRecordId: string
-): Promise<CategoryOption[]> {
+): Promise<{ items: CategoryOption[]; requiresContent: boolean }> {
   const snapshot = await getDictionarySnapshot();
   const typeRecord = snapshot.types.get(typeRecordId);
 
@@ -314,10 +315,13 @@ export async function getContentCategoryOptions(
     .map((recordId) => snapshot.contents.get(recordId))
     .filter((item): item is ContentDictionaryRecord => Boolean(item));
 
-  return sortBySequence(contentOptions).map((item) => ({
-    recordId: item.recordId,
-    label: item.name,
-  }));
+  return {
+    items: sortBySequence(contentOptions).map((item) => ({
+      recordId: item.recordId,
+      label: item.name,
+    })),
+    requiresContent: typeRecord.contentRecordIds.length > 0,
+  };
 }
 
 /**
@@ -351,17 +355,39 @@ export async function getDetailCategoryOptions(
  */
 export async function resolveCategorySelection(input: {
   typeRecordId: string;
-  contentRecordId: string;
+  contentRecordId?: string;
   detailRecordId?: string;
 }): Promise<ResolvedCategorySelection> {
   const snapshot = await getDictionarySnapshot();
   const typeRecord = snapshot.types.get(input.typeRecordId);
-  const contentRecord = snapshot.contents.get(input.contentRecordId);
 
   if (!typeRecord) {
     throw new Error('所选类型不存在');
   }
 
+  const requiresContent = typeRecord.contentRecordIds.length > 0;
+
+  if (!requiresContent) {
+    if (input.contentRecordId) {
+      throw new Error('当前类型没有内容，请不要提交内容');
+    }
+
+    if (input.detailRecordId) {
+      throw new Error('当前类型没有细项，请不要提交细项');
+    }
+
+    return {
+      typeName: typeRecord.name,
+      requiresContent: false,
+      requiresDetail: false,
+    };
+  }
+
+  if (!input.contentRecordId) {
+    throw new Error('当前类型必须选择内容');
+  }
+
+  const contentRecord = snapshot.contents.get(input.contentRecordId);
   if (!contentRecord) {
     throw new Error('所选内容不存在');
   }
@@ -380,6 +406,7 @@ export async function resolveCategorySelection(input: {
     return {
       typeName: typeRecord.name,
       contentName: contentRecord.name,
+      requiresContent: true,
       requiresDetail: false,
     };
   }
@@ -400,6 +427,7 @@ export async function resolveCategorySelection(input: {
   return {
     typeName: typeRecord.name,
     contentName: contentRecord.name,
+    requiresContent: true,
     detailName: detailRecord.name,
     requiresDetail: true,
   };

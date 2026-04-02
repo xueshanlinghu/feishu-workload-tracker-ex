@@ -19,7 +19,14 @@ import {
   resolveCategorySelection,
 } from '@/lib/feishu/workload';
 import { getCurrentUser, isSessionValid } from '@/lib/session';
-import { isValidRecordHours, MAX_DAILY_HOURS } from '@/lib/work-hours';
+import {
+  getMaxRecordHoursForType,
+  hasFullDayLeaveConflict,
+  LEAVE_TYPE_NAME,
+  isLeaveType,
+  isValidRecordHours,
+  MAX_DAILY_HOURS,
+} from '@/lib/work-hours';
 import { BitableRecord, SubmitWorkloadData } from '@/types/feishu';
 
 /**
@@ -158,6 +165,53 @@ export async function POST(request: NextRequest) {
       )
     );
 
+    const leaveHoursLimit = getMaxRecordHoursForType(LEAVE_TYPE_NAME);
+    const existingLeaveHours = existingRecords
+      .filter((record) => isLeaveType(String(record.fields['类型'] || '')))
+      .reduce((sum, record) => sum + parseRecordHours(record), 0);
+    const newLeaveHours = resolvedCategories.reduce((sum, resolvedCategory, index) => {
+      if (!isLeaveType(resolvedCategory.typeName)) {
+        return sum;
+      }
+
+      return sum + records[index].hours;
+    }, 0);
+
+    if (existingLeaveHours + newLeaveHours > leaveHoursLimit) {
+      return NextResponse.json(
+        {
+          error: `“${LEAVE_TYPE_NAME}” 当天累计不能超过 ${leaveHoursLimit} 小时`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (hasFullDayLeaveConflict(finalTotalHours, existingLeaveHours + newLeaveHours)) {
+      return NextResponse.json(
+        {
+          error: `“${LEAVE_TYPE_NAME}” 达到 ${leaveHoursLimit} 小时后，不允许当天再提交其他工作事项`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const overTypeLimitIndex = resolvedCategories.findIndex(
+      (resolvedCategory, index) =>
+        records[index].hours > getMaxRecordHoursForType(resolvedCategory.typeName)
+    );
+
+    if (overTypeLimitIndex >= 0) {
+      const targetCategory = resolvedCategories[overTypeLimitIndex];
+      const maxHours = getMaxRecordHoursForType(targetCategory.typeName);
+
+      return NextResponse.json(
+        {
+          error: `"${targetCategory.typeName}" 单条记录最多只能填写 ${maxHours} 小时`,
+        },
+        { status: 400 }
+      );
+    }
+
     const dateTimestamp = new Date(date).getTime();
     const bitableRecords: BitableRecord[] = records.map((record, index) => {
       const resolvedCategory = resolvedCategories[index];
@@ -165,11 +219,14 @@ export async function POST(request: NextRequest) {
         记录日期: dateTimestamp,
         记录人员: [{ id: personId }],
         类型: resolvedCategory.typeName,
-        内容: resolvedCategory.contentName,
         人力占用小时数: record.hours,
         记录状态: '未发周报',
         创建人: [{ id: currentUser.openId }],
       };
+
+      if (resolvedCategory.contentName) {
+        fields['内容'] = resolvedCategory.contentName;
+      }
 
       if (resolvedCategory.detailName) {
         fields['细项'] = resolvedCategory.detailName;
@@ -262,17 +319,57 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const typeName = String(targetRecord.fields['类型'] || '').trim();
+    const maxHoursForType = getMaxRecordHoursForType(typeName);
+
+    if (hours > maxHoursForType) {
+      return NextResponse.json(
+        { error: `"${typeName || '当前类型'}" 单条记录最多只能填写 ${maxHoursForType} 小时` },
+        { status: 400 }
+      );
+    }
+
     const personRecords = await queryRecordsByDateAndPerson(recordDate, personId);
 
     const existingTotalHours = personRecords
       .filter((record) => record.record_id !== recordId)
       .reduce((sum, record) => sum + parseRecordHours(record), 0);
+    const nextTotalHours = existingTotalHours + hours;
 
-    if (existingTotalHours + hours > MAX_DAILY_HOURS) {
+    if (nextTotalHours > MAX_DAILY_HOURS) {
       return NextResponse.json(
         {
           error: '总工时超出限制',
-          detail: `该日期其他记录已占用 ${existingTotalHours} 小时，更新后将达到 ${existingTotalHours + hours} 小时，超过 ${MAX_DAILY_HOURS} 小时上限`,
+          detail: `该日期其他记录已占用 ${existingTotalHours} 小时，更新后将达到 ${nextTotalHours} 小时，超过 ${MAX_DAILY_HOURS} 小时上限`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const otherLeaveHours = personRecords
+      .filter(
+        (record) =>
+          record.record_id !== recordId &&
+          isLeaveType(String(record.fields['类型'] || ''))
+      )
+      .reduce((sum, record) => sum + parseRecordHours(record), 0);
+    const nextLeaveHours = otherLeaveHours + (isLeaveType(typeName) ? hours : 0);
+
+    if (isLeaveType(typeName)) {
+      if (otherLeaveHours + hours > getMaxRecordHoursForType(typeName)) {
+        return NextResponse.json(
+          {
+            error: `“${typeName}” 当天累计不能超过 ${getMaxRecordHoursForType(typeName)} 小时`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (hasFullDayLeaveConflict(nextTotalHours, nextLeaveHours)) {
+      return NextResponse.json(
+        {
+          error: `“${LEAVE_TYPE_NAME}” 达到 ${getMaxRecordHoursForType(LEAVE_TYPE_NAME)} 小时后，不允许当天再保留其他工作事项`,
         },
         { status: 400 }
       );

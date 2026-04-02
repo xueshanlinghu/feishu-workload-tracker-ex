@@ -49,10 +49,11 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const items = await getContentCategoryOptions(typeRecordId);
+      const contentResponse = await getContentCategoryOptions(typeRecordId);
       return NextResponse.json({
-        items,
-        total: items.length,
+        items: contentResponse.items,
+        total: contentResponse.items.length,
+        requiresContent: contentResponse.requiresContent,
       });
     }
 
