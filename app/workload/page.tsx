@@ -125,6 +125,7 @@ function WorkloadPageContent() {
   const detailOptionsCacheRef = useRef<
     Record<string, { items: SelectOption[]; requiresDetail: boolean }>
   >({});
+  const hasTouchedPersonSelectRef = useRef(false);
 
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -412,6 +413,11 @@ function WorkloadPageContent() {
     await fetchExistingRecords(selectedDate, selectedPerson);
   };
 
+  const handlePersonChange = (personOpenId: string) => {
+    hasTouchedPersonSelectRef.current = true;
+    setSelectedPerson(personOpenId);
+  };
+
   useEffect(() => {
     void fetchSession();
   }, [fetchSession]);
@@ -482,6 +488,18 @@ function WorkloadPageContent() {
 
     void fetchExistingRecords(selectedDate, selectedPerson);
   }, [fetchExistingRecords, selectedDate, selectedPerson]);
+
+  useEffect(() => {
+    if (selectedPerson || hasTouchedPersonSelectRef.current || !currentUser || users.length === 0) {
+      return;
+    }
+
+    // 仅当登录人确实存在于人员列表时，才默认帮用户选中，避免误把无权限人员当成已选择。
+    const matchedUser = users.find((user) => user.openId === currentUser.openId);
+    if (matchedUser) {
+      setSelectedPerson(matchedUser.openId);
+    }
+  }, [currentUser, selectedPerson, users]);
 
   const newTotalHours = newRecords.reduce((sum, record) => sum + record.hours, 0);
   const finalTotalHours = existingTotalHours + newTotalHours;
@@ -740,7 +758,7 @@ function WorkloadPageContent() {
             <CustomSelect
               label="选择人员"
               value={selectedPerson}
-              onChange={setSelectedPerson}
+              onChange={handlePersonChange}
               options={userOptions}
               placeholder="-- 请选择人员 --"
               disabled={isFetchingRecords || isSubmitting}

@@ -204,6 +204,24 @@ git commit -m "feat(workload): 升级三级分类人力占用录入流程" \
 5. 提交代码（如需）
 6. 更新文档
 
+## 版本发布常见流程
+
+当用户明确要求执行版本发布时，默认按以下顺序推进，除非用户另有说明：
+
+1. 检查版本相关文档是否需要同步更新（如 `README.md`、`docs/`、环境变量说明、字段说明）
+2. 完成代码修改后，先在 `dev` 分支提交，commit message 按中文多行说明写清改动范围
+3. 本地执行必要验证（至少包含 lint / TypeScript 检查；如有额外测试也一并执行）
+4. 确认工作区干净后，将 `dev` 推送到远端
+5. 使用 `gh` 创建指向 `master` 的 PR，并在用户明确要求时执行 merge
+6. PR 合并完成后，基于 `master` 的最终提交创建版本 tag 与 GitHub Release
+7. 发布完成后，向用户反馈 commit、PR、tag、release 链接以及当前分支/工作区状态
+
+补充约定：
+
+- 版本号需要同步更新 `package.json` 与 `package-lock.json`
+- Release 说明应概括本次核心功能、重要修复、文档更新和验证结果
+- 若发布过程中发现文档、版本号、tag、release 口径不一致，应先修正再继续后续步骤
+
 ## 注意事项
 
 - Windows环境下优先使用Git Bash或WSL
