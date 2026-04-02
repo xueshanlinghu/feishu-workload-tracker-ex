@@ -2,16 +2,24 @@
  * 编辑记录弹窗组件
  *
  * 功能：
- * - 弹窗显示，支持编辑已有记录的人力占用
- * - 使用大笑脸选择器快速选择人力值
- * - 实时显示预览和验证
+ * - 弹窗显示，支持编辑已有记录的工时
+ * - 使用 14 格彩色情绪选择器快速调整小时数
+ * - 实时显示工时变化、折算人天和总量校验
  * - 提交更新到飞书多维表格
  */
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import HoursMoodIcon, { getHoursMoodTone } from './HoursMoodIcon';
 import WorkloadSelector from './WorkloadSelector';
+import {
+  formatHoursValue,
+  getDailyHoursStatus,
+  hoursToWorkloadRatio,
+  MAX_DAILY_HOURS,
+  STANDARD_WORKDAY_HOURS,
+} from '@/lib/work-hours';
 
 interface EditRecordModalProps {
   isOpen: boolean;
@@ -19,11 +27,11 @@ interface EditRecordModalProps {
   record: {
     id: string;
     task: string;
-    workload: number;
+    hours: number;
   } | null;
   onSuccess: () => void;
   onError: (error: string) => void;
-  currentTotal: number; // 当前日期的总人力占用
+  currentTotalHours: number; // 当前日期的总工时
 }
 
 export default function EditRecordModal({
@@ -32,25 +40,76 @@ export default function EditRecordModal({
   record,
   onSuccess,
   onError,
-  currentTotal,
+  currentTotalHours,
 }: EditRecordModalProps) {
-  const [workload, setWorkload] = useState<number>(0);
+  const [hours, setHours] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [useCompactLayout, setUseCompactLayout] = useState(false);
 
-  // 当弹窗打开或记录变化时，重置workload为记录的原始值
   useEffect(() => {
     if (isOpen && record) {
-      setWorkload(record.workload);
+      setHours(record.hours);
     }
   }, [isOpen, record]);
 
-  // 计算修改后的总人力
-  // 总人力 = 当前总人力 - 原记录人力 + 新人力
-  const newTotal = record ? currentTotal - record.workload + workload : currentTotal;
-  const isOverLimit = newTotal > 1.0;
-  const workloadChange = record ? workload - record.workload : 0;
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
 
-  // 提交更新
+    const mediaQuery = window.matchMedia('(max-width: 1280px), (max-height: 900px)');
+    const updateLayoutMode = () => {
+      setUseCompactLayout(mediaQuery.matches);
+    };
+
+    updateLayoutMode();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateLayoutMode);
+      return () => {
+        mediaQuery.removeEventListener('change', updateLayoutMode);
+      };
+    }
+
+    mediaQuery.addListener(updateLayoutMode);
+    return () => {
+      mediaQuery.removeListener(updateLayoutMode);
+    };
+  }, []);
+
+  const newTotalHours = record
+    ? currentTotalHours - record.hours + hours
+    : currentTotalHours;
+  const totalHoursStatus = getDailyHoursStatus(newTotalHours);
+  const isOverLimit = newTotalHours > MAX_DAILY_HOURS;
+  const isOverStandardHours = newTotalHours > STANDARD_WORKDAY_HOURS;
+  const hoursChange = record ? hours - record.hours : 0;
+  const moodTone = hours > 0 ? getHoursMoodTone(hours) : null;
+  const totalHoursValueColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-emerald-600';
+  const totalHoursRatioColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-500'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-gray-500';
+  const totalHoursLimitColor =
+    totalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : totalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-emerald-600';
+  const summaryCardClass =
+    totalHoursStatus === 'danger'
+      ? 'border-red-200 bg-red-50'
+      : totalHoursStatus === 'warning'
+        ? 'border-orange-200 bg-orange-50'
+        : 'border-emerald-200 bg-emerald-50';
+
   const handleSubmit = async () => {
     if (!record) return;
 
@@ -62,7 +121,7 @@ export default function EditRecordModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recordId: record.id,
-          workload: workload,
+          hours,
         }),
       });
 
@@ -71,9 +130,7 @@ export default function EditRecordModal({
         throw new Error(data.error || '更新失败');
       }
 
-      // 等待 onSuccess 完成（它会刷新数据）
       await onSuccess();
-      // 数据刷新完成后再关闭弹窗
       onClose();
     } catch (err) {
       onError(err instanceof Error ? err.message : '更新失败');
@@ -82,117 +139,130 @@ export default function EditRecordModal({
     }
   };
 
-  // 生成Emoji表情
-  const getWorkloadEmojis = (workloadValue: number): string => {
-    if (workloadValue === 0) return '';
-    const clampedWorkload = Math.max(0, Math.min(1, workloadValue));
-    const filled = Math.round(clampedWorkload * 10);
-    return '😄'.repeat(filled);
-  };
-
   if (!isOpen || !record) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
-        {/* 标题 */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">编辑记录</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div className="w-full max-w-[min(96vw,44rem)] max-h-[calc(100vh-1rem)] overflow-y-auto overscroll-contain rounded-[28px] bg-white p-4 shadow-xl sm:max-h-[calc(100vh-2rem)] sm:p-6">
+        <div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 sm:text-xl">编辑记录</h2>
+            <p className="mt-1 text-sm text-gray-500">调整该事项的工时并实时校验当天上限</p>
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex-shrink-0 text-gray-400 transition-colors hover:text-gray-600"
             aria-label="关闭"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* 分类路径 */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            分类路径
-          </label>
-          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-gray-900">
+          <label className="mb-2 block text-sm font-medium text-gray-700">分类路径</label>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 break-words">
             {record.task}
           </div>
         </div>
 
-        {/* 人力选择器 */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            人力占用
-          </label>
-          <div className="flex justify-center">
-            <WorkloadSelector
-              value={workload}
-              onChange={setWorkload}
-              disabled={isSubmitting}
-            />
-          </div>
+          <label className="mb-3 block text-sm font-medium text-gray-700">工时</label>
+          <WorkloadSelector
+            value={hours}
+            onChange={setHours}
+            disabled={isSubmitting}
+            mode={useCompactLayout ? 'dropdown' : 'inline'}
+          />
         </div>
 
-        {/* 预览 */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-3">
-          {/* 当前选择的人力 */}
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">新的人力占用值：</span>
-            <span className="flex items-center gap-2">
-              <span className="text-lg">{getWorkloadEmojis(workload)}</span>
-              <span className="font-semibold text-blue-600 text-lg">
-                {workload.toFixed(1)}
+        <div className={`mb-6 space-y-3 rounded-2xl border p-5 ${summaryCardClass}`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm text-gray-600">新的工时值：</span>
+            <span className="flex items-center gap-3 sm:justify-end">
+              {moodTone && (
+                <HoursMoodIcon hours={hours} active={true} size={18} className="h-10 w-10" />
+              )}
+              <span className="text-right">
+                <span className={`block text-lg font-semibold ${moodTone?.iconClassName || 'text-blue-600'}`}>
+                  {formatHoursValue(hours)} 小时
+                </span>
+                <span className="block text-xs text-gray-500">
+                  约 {hoursToWorkloadRatio(hours).toFixed(1)} 人天
+                </span>
               </span>
             </span>
           </div>
 
-          {/* 人力变动 */}
-          {workloadChange !== 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">人力变动：</span>
-              <span className={`font-semibold text-sm ${workloadChange > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                {workloadChange > 0 ? '+' : ''}{workloadChange.toFixed(1)}
+          {hoursChange !== 0 && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-sm text-gray-600">工时变动：</span>
+              <span
+                className={`text-sm font-semibold ${
+                  hoursChange > 0 ? 'text-orange-600' : 'text-emerald-600'
+                }`}
+              >
+                {hoursChange > 0 ? '+' : ''}
+                {formatHoursValue(hoursChange)} 小时
               </span>
             </div>
           )}
 
-          {/* 修改后总人力 */}
-          <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-            <span className="text-sm font-medium text-gray-700">修改后总人力：</span>
-            <span className={`font-bold text-lg ${isOverLimit ? 'text-red-600' : 'text-green-600'}`}>
-              {newTotal.toFixed(1)} / 1.0
+          <div className="flex flex-col gap-2 border-t border-gray-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-sm font-medium text-gray-700">修改后总工时：</span>
+            <span className="text-right text-lg font-bold">
+              <span className="block">
+                <span className={totalHoursValueColor}>{formatHoursValue(newTotalHours)}</span>
+                <span className={totalHoursLimitColor}> / {STANDARD_WORKDAY_HOURS} 小时</span>
+              </span>
+              <span className={`block text-xs font-medium ${totalHoursRatioColor}`}>
+                约 {hoursToWorkloadRatio(newTotalHours).toFixed(1)} 人天
+              </span>
             </span>
           </div>
 
-          {/* 超限警告 */}
-          {isOverLimit && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
-              <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {!isOverLimit && isOverStandardHours && (
+            <div className="flex items-start gap-2 rounded-2xl border border-orange-200 bg-white/70 p-3">
+              <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <div>
-                <p className="text-sm font-medium text-red-800">总人力超过限制</p>
-                <p className="text-xs text-red-600 mt-1">
-                  该日期总人力将达到 {newTotal.toFixed(1)}，超过 1.0 的限制，无法保存
+                <p className="text-sm font-medium text-orange-800">已超过 8 小时标准工时</p>
+                <p className="mt-1 text-xs text-orange-700">
+                  修改后总工时为 {formatHoursValue(newTotalHours)} 小时，仍可保存，但请留意当天安排。
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isOverLimit && (
+            <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3">
+              <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-800">总工时超过限制</p>
+                <p className="mt-1 text-xs text-red-600">
+                  该日期总工时将达到 {formatHoursValue(newTotalHours)} 小时，超过 {MAX_DAILY_HOURS} 小时上限，无法保存。
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* 按钮 */}
-        <div className="flex gap-3">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             取消
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || workload === 0 || isOverLimit}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            disabled={isSubmitting || hours === 0 || isOverLimit}
+            className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? '更新中...' : '确认更新'}
           </button>

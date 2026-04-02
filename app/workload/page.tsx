@@ -14,12 +14,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EditRecordModal from './EditRecordModal';
 import CircularProgress from './CircularProgress';
+import HoursMoodIcon from './HoursMoodIcon';
 import { ToastProvider, useToast } from './ToastProvider';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import CustomDatePicker from './CustomDatePicker';
 import CustomSelect, { SelectOption } from './CustomSelect';
 import WorkloadSelector from './WorkloadSelector';
 import packageJson from '../../package.json';
+import {
+  formatHoursValue,
+  getDailyHoursStatus,
+  hoursToWorkloadRatio,
+  MAX_DAILY_HOURS,
+  STANDARD_WORKDAY_HOURS,
+} from '@/lib/work-hours';
 
 const SESSION_HEARTBEAT_INTERVAL_MS = 45 * 60 * 1000;
 
@@ -48,7 +56,7 @@ interface ExistingRecord {
   content: string;
   detail?: string;
   task: string;
-  workload: number;
+  hours: number;
   status: string;
 }
 
@@ -57,7 +65,7 @@ interface NewRecord {
   typeRecordId: string;
   contentRecordId: string;
   detailRecordId: string;
-  workload: number;
+  hours: number;
   contentOptions: SelectOption[];
   detailOptions: SelectOption[];
   isLoadingContents: boolean;
@@ -84,7 +92,7 @@ function createEmptyRecord(): NewRecord {
     typeRecordId: '',
     contentRecordId: '',
     detailRecordId: '',
-    workload: 0,
+    hours: 0,
     contentOptions: [],
     detailOptions: [],
     isLoadingContents: false,
@@ -126,7 +134,8 @@ function WorkloadPageContent() {
   );
   const [selectedPerson, setSelectedPerson] = useState<string>('');
   const [existingRecords, setExistingRecords] = useState<ExistingRecord[]>([]);
-  const [existingTotal, setExistingTotal] = useState<number>(0);
+  const [existingTotalHours, setExistingTotalHours] = useState<number>(0);
+  const [recordsRefreshToken, setRecordsRefreshToken] = useState(0);
   const [newRecords, setNewRecords] = useState<NewRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingRecords, setIsFetchingRecords] = useState(false);
@@ -159,7 +168,6 @@ function WorkloadPageContent() {
       }
 
       setCurrentUser(data.user);
-      setSelectedPerson(data.user.openId);
     } catch (error) {
       console.error('Failed to fetch session:', error);
       router.push('/login');
@@ -216,11 +224,13 @@ function WorkloadPageContent() {
 
       const data = await response.json();
       setExistingRecords(data.records || []);
-      setExistingTotal(data.total || 0);
+      setExistingTotalHours(data.totalHours || 0);
+      setRecordsRefreshToken((current) => current + 1);
     } catch (error) {
       console.error('Failed to fetch records:', error);
       setExistingRecords([]);
-      setExistingTotal(0);
+      setExistingTotalHours(0);
+      setRecordsRefreshToken((current) => current + 1);
       showError('获取已有记录失败');
     } finally {
       setIsFetchingRecords(false);
@@ -387,10 +397,10 @@ function WorkloadPageContent() {
     }));
   };
 
-  const handleWorkloadChange = (recordId: string, workload: number) => {
+  const handleHoursChange = (recordId: string, hours: number) => {
     updateNewRecordState(recordId, (record) => ({
       ...record,
-      workload,
+      hours,
     }));
   };
 
@@ -473,13 +483,15 @@ function WorkloadPageContent() {
     void fetchExistingRecords(selectedDate, selectedPerson);
   }, [fetchExistingRecords, selectedDate, selectedPerson]);
 
-  const newTotal = newRecords.reduce((sum, record) => sum + record.workload, 0);
-  const finalTotal = existingTotal + newTotal;
+  const newTotalHours = newRecords.reduce((sum, record) => sum + record.hours, 0);
+  const finalTotalHours = existingTotalHours + newTotalHours;
+  const finalHoursStatus = getDailyHoursStatus(finalTotalHours);
+  const hasSelectedPerson = Boolean(selectedPerson);
   const hasPendingCategoryLoad = newRecords.some(
     (record) => record.isLoadingContents || record.isLoadingDetails
   );
   const hasInvalidRecords = newRecords.some((record) => {
-    if (!record.typeRecordId || !record.contentRecordId || record.workload === 0) {
+    if (!record.typeRecordId || !record.contentRecordId || record.hours === 0) {
       return true;
     }
 
@@ -496,6 +508,25 @@ function WorkloadPageContent() {
     icon: 'user',
   }));
 
+  const finalHoursValueColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-green-600';
+  const finalHoursRatioColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-500'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-gray-500';
+  const finalHoursLimitColor =
+    finalHoursStatus === 'danger'
+      ? 'text-red-600'
+      : finalHoursStatus === 'warning'
+        ? 'text-orange-500'
+        : 'text-green-600';
+
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
@@ -505,18 +536,23 @@ function WorkloadPageContent() {
         return;
       }
 
+      if (!hasSelectedPerson) {
+        showError('请先选择人员后再提交记录');
+        return;
+      }
+
       if (hasPendingCategoryLoad) {
         showError('请等待分类选项加载完成后再提交');
         return;
       }
 
       if (hasInvalidRecords) {
-        showError('请完善所有记录的分类和人力占用');
+        showError('请完善所有记录的分类和工时');
         return;
       }
 
-      if (finalTotal > 1.0) {
-        showError('总人力占用不能超过1.0');
+      if (finalTotalHours > MAX_DAILY_HOURS) {
+        showError(`总工时不能超过 ${MAX_DAILY_HOURS} 小时`);
         return;
       }
 
@@ -532,7 +568,7 @@ function WorkloadPageContent() {
             typeRecordId: record.typeRecordId,
             contentRecordId: record.contentRecordId,
             detailRecordId: record.detailRequired ? record.detailRecordId : undefined,
-            workload: record.workload,
+            hours: record.hours,
           })),
         }),
       });
@@ -629,23 +665,16 @@ function WorkloadPageContent() {
     }
   };
 
-  const getWorkloadEmojis = (workload: number): string => {
-    if (workload === 0) {
-      return '';
-    }
-
-    const clampedWorkload = Math.max(0, Math.min(1, workload));
-    const filled = Math.round(clampedWorkload * 10);
-
-    return '😄'.repeat(filled);
+  const getHoursRatioText = (hours: number): string => {
+    return `${hoursToWorkloadRatio(hours).toFixed(1)} 人天`;
   };
 
-  const getWorkloadCardStyle = (workload: number) => {
-    const percentage = (workload / 1.0) * 100;
+  const getHoursCardStyle = (hours: number) => {
+    const percentage = (hours / MAX_DAILY_HOURS) * 100;
 
     if (percentage >= 70) {
       return {
-        bg: 'bg-gradient-to-br from-orange-50 to-red-50',
+        bg: 'bg-orange-50',
         border: 'border-orange-200',
         textColor: 'text-orange-700',
         iconBg: 'bg-orange-100',
@@ -654,18 +683,18 @@ function WorkloadPageContent() {
 
     if (percentage >= 40) {
       return {
-        bg: 'bg-gradient-to-br from-blue-50 to-indigo-50',
-        border: 'border-blue-200',
-        textColor: 'text-blue-700',
-        iconBg: 'bg-blue-100',
+        bg: 'bg-sky-50',
+        border: 'border-sky-200',
+        textColor: 'text-sky-700',
+        iconBg: 'bg-sky-100',
       };
     }
 
     return {
-      bg: 'bg-gradient-to-br from-green-50 to-emerald-50',
-      border: 'border-green-200',
-      textColor: 'text-green-700',
-      iconBg: 'bg-green-100',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200',
+      textColor: 'text-emerald-700',
+      iconBg: 'bg-emerald-100',
     };
   };
 
@@ -684,7 +713,7 @@ function WorkloadPageContent() {
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-10">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-5 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-black">人力占用记录</h1>
+          <h1 className="text-2xl font-bold text-black tracking-tight">人力占用记录 EX</h1>
           <div className="flex items-center space-x-4">
             {currentUser && (
               <span className="text-gray-700 font-medium">欢迎，{currentUser.name}</span>
@@ -778,7 +807,7 @@ function WorkloadPageContent() {
             <>
               <div className="space-y-4">
                 {existingRecords.map((record) => {
-                  const cardStyle = getWorkloadCardStyle(record.workload || 0);
+                  const cardStyle = getHoursCardStyle(record.hours || 0);
                   return (
                     <div
                       key={record.id}
@@ -793,14 +822,22 @@ function WorkloadPageContent() {
                         </span>
                       </div>
                       <div className="flex items-center space-x-4">
-                        <span className="text-lg hidden sm:inline">
-                          {getWorkloadEmojis(record.workload || 0)}
-                        </span>
-                        <span
-                          className={`font-bold text-lg min-w-[60px] text-right ${cardStyle.textColor}`}
-                        >
-                          {(record.workload || 0).toFixed(1)}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <HoursMoodIcon
+                            hours={record.hours || 0}
+                            active={true}
+                            size={18}
+                            className="h-10 w-10"
+                          />
+                          <span className="text-right">
+                            <span className={`block min-w-[72px] text-lg font-bold ${cardStyle.textColor}`}>
+                              {formatHoursValue(record.hours || 0)} 小时
+                            </span>
+                            <span className="block text-xs text-gray-500">
+                              约 {getHoursRatioText(record.hours || 0)}
+                            </span>
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => openEditModal(record)}
@@ -840,11 +877,16 @@ function WorkloadPageContent() {
               </div>
               <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex-1 text-center md:text-left">
-                  <h3 className="text-lg font-semibold text-gray-700 mb-1">已占用人力</h3>
-                  <p className="text-sm text-gray-500">当天工作负载统计</p>
+                  <h3 className="text-lg font-semibold text-gray-700 mb-1">已占用工时</h3>
                 </div>
                 <div className="flex justify-center">
-                  <CircularProgress current={existingTotal} max={1.0} size={140} strokeWidth={12} />
+                  <CircularProgress
+                    current={existingTotalHours}
+                    max={STANDARD_WORKDAY_HOURS}
+                    refreshToken={recordsRefreshToken}
+                    size={140}
+                    strokeWidth={12}
+                  />
                 </div>
               </div>
             </>
@@ -856,9 +898,9 @@ function WorkloadPageContent() {
             <h2 className="text-xl font-bold text-gray-800">新增记录</h2>
             <button
               onClick={addNewRecord}
-              disabled={isFetchingRecords || isSubmitting}
+              disabled={isFetchingRecords || isSubmitting || !hasSelectedPerson}
               className={`px-5 py-2.5 rounded-xl font-medium transition-all duration-200 ${
-                isFetchingRecords || isSubmitting
+                isFetchingRecords || isSubmitting || !hasSelectedPerson
                   ? 'bg-gray-400 cursor-not-allowed text-white'
                   : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white hover:from-blue-700 hover:to-blue-600 shadow-md hover:shadow-lg hover:scale-105'
               }`}
@@ -890,7 +932,7 @@ function WorkloadPageContent() {
                   key={record.id}
                   className="bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200"
                 >
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_auto_auto] xl:items-start 2xl:grid-cols-[minmax(210px,0.9fr)_minmax(320px,1.35fr)_minmax(320px,1.35fr)_auto_auto]">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(140px,0.85fr)_minmax(180px,1.15fr)_minmax(180px,1.15fr)_minmax(160px,0.95fr)_auto] lg:items-start 2xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_minmax(210px,0.95fr)_auto]">
                     <CustomSelect
                       label="类型"
                       value={record.typeRecordId}
@@ -946,14 +988,15 @@ function WorkloadPageContent() {
                       searchable={true}
                       showIcon={true}
                     />
-                    <div className="xl:pt-8">
+                    <div className="lg:pt-8 min-w-0">
                       <WorkloadSelector
-                        value={record.workload}
-                        onChange={(value) => handleWorkloadChange(record.id, value)}
+                        value={record.hours}
+                        onChange={(value) => handleHoursChange(record.id, value)}
                         disabled={isFetchingRecords || isSubmitting}
+                        mode="dropdown"
                       />
                     </div>
-                    <div className="xl:pt-8">
+                    <div className="lg:pt-8 lg:flex lg:justify-end">
                       <button
                         onClick={() => removeRecord(record.id)}
                         className="px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors duration-200 font-medium"
@@ -967,7 +1010,7 @@ function WorkloadPageContent() {
                     !record.isLoadingDetails &&
                     !record.detailRequired && (
                       <p className="mt-3 text-sm text-amber-600">
-                        当前内容没有细项，可直接提交“类型 + 内容 + 人力”记录。
+                        当前内容没有细项，可直接提交“类型 + 内容 + 工时”记录。
                       </p>
                     )}
                 </div>
@@ -976,30 +1019,44 @@ function WorkloadPageContent() {
               <div className="mt-8 pt-6 border-t-2 border-gray-200">
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-700 font-medium">已有人力：</span>
-                    <span className="font-bold text-lg text-gray-800">
-                      {existingTotal.toFixed(1)}
+                    <span className="text-gray-700 font-medium">已排工时：</span>
+                    <span className="text-right">
+                      <span className="block text-lg font-bold text-gray-800">
+                        {formatHoursValue(existingTotalHours)} 小时
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        约 {getHoursRatioText(existingTotalHours)}
+                      </span>
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-700 font-medium">新增人力：</span>
-                    <span className="font-bold text-lg text-gray-800">
-                      {newTotal.toFixed(1)}
+                    <span className="text-gray-700 font-medium">新增工时：</span>
+                    <span className="text-right">
+                      <span className="block text-lg font-bold text-gray-800">
+                        {formatHoursValue(newTotalHours)} 小时
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        约 {getHoursRatioText(newTotalHours)}
+                      </span>
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
                     <span className="text-lg font-bold text-gray-900">总计：</span>
-                    <span
-                      className={`text-2xl font-bold ${
-                        finalTotal > 1.0 ? 'text-red-600' : 'text-green-600'
-                      }`}
-                    >
-                      {finalTotal.toFixed(1)} / 1.0
+                    <span className="text-right">
+                      <span className="block text-2xl font-bold">
+                        <span className={finalHoursValueColor}>
+                          {formatHoursValue(finalTotalHours)}
+                        </span>
+                        <span className={finalHoursLimitColor}> / {STANDARD_WORKDAY_HOURS} 小时</span>
+                      </span>
+                      <span className={`block text-xs ${finalHoursRatioColor}`}>
+                        约 {getHoursRatioText(finalTotalHours)}
+                      </span>
                     </span>
                   </div>
                 </div>
 
-                {finalTotal > 1.0 && (
+                {finalTotalHours > MAX_DAILY_HOURS && (
                   <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
                     <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -1009,9 +1066,24 @@ function WorkloadPageContent() {
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                       />
                     </svg>
-                    <span className="font-medium">总人力占用超过1.0，无法提交</span>
+                    <span className="font-medium">总工时超过 14 小时，无法提交</span>
                   </div>
                 )}
+
+                {finalTotalHours > STANDARD_WORKDAY_HOURS &&
+                  finalTotalHours <= MAX_DAILY_HOURS && (
+                    <div className="mt-4 bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-xl flex items-center">
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <span className="font-medium">总工时已超过 8 小时标准工时，可提交，但请留意当天安排</span>
+                    </div>
+                  )}
 
                 {hasPendingCategoryLoad && (
                   <div className="mt-4 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl flex items-center">
@@ -1038,7 +1110,7 @@ function WorkloadPageContent() {
                       />
                     </svg>
                     <span className="font-medium">
-                      请完善所有记录（选择类型、内容、必要时选择细项，并设置人力）
+                      请完善所有记录（选择类型、内容、必要时选择细项，并设置工时）
                     </span>
                   </div>
                 )}
@@ -1050,8 +1122,9 @@ function WorkloadPageContent() {
                   disabled={
                     isSubmitting ||
                     isFetchingRecords ||
+                    !hasSelectedPerson ||
                     hasPendingCategoryLoad ||
-                    finalTotal > 1.0 ||
+                    finalTotalHours > MAX_DAILY_HOURS ||
                     newRecords.length === 0 ||
                     hasInvalidRecords
                   }
@@ -1075,7 +1148,7 @@ function WorkloadPageContent() {
         record={editingRecord}
         onSuccess={handleEditSuccess}
         onError={handleEditError}
-        currentTotal={existingTotal}
+        currentTotalHours={existingTotalHours}
       />
 
       <DeleteConfirmModal

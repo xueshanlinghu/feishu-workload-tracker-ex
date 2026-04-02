@@ -8,6 +8,7 @@
  */
 
 import { config } from '@/lib/config';
+import { STANDARD_WORKDAY_HOURS } from '@/lib/work-hours';
 import { queryAllRecords, queryRecordsByDateAndPerson } from './bitable';
 import { BitableRecord, CategoryOption } from '@/types/feishu';
 
@@ -52,7 +53,7 @@ export interface FormattedWorkloadRecord {
   content: string;
   detail?: string;
   task: string;
-  workload: number;
+  hours: number;
   status: string;
   createdTime?: number;
 }
@@ -141,20 +142,34 @@ export function buildTaskLabel(type: string, content: string, detail?: string): 
 }
 
 /**
- * 解析记录中的人力占用值
+ * 从飞书记录中解析工时
+ *
+ * 优先读取 `人力占用小时数` 整数字段；若该字段缺失，再使用公式字段折算小时数作为兜底。
  */
-export function parseWorkloadValue(record: BitableRecord): number {
+export function parseRecordHours(record: BitableRecord): number {
+  const rawHours = record.fields['人力占用小时数'];
+
+  if (typeof rawHours === 'number' && Number.isFinite(rawHours)) {
+    return rawHours;
+  }
+
+  if (typeof rawHours === 'string') {
+    const parsedHours = Number(rawHours);
+    if (Number.isFinite(parsedHours)) {
+      return parsedHours;
+    }
+  }
+
   const workloadCalc = record.fields['人力占用计算'] as
     | { value?: number[] }
     | undefined;
-  let workload = (workloadCalc?.value?.[0] as number) || 0;
+  const workloadRatio = (workloadCalc?.value?.[0] as number) || 0;
 
-  if (workload === 0) {
-    const workloadInt = (record.fields['人力占用'] as number) || 0;
-    workload = workloadInt / 10;
+  if (workloadRatio > 0) {
+    return Math.round(workloadRatio * STANDARD_WORKDAY_HOURS);
   }
 
-  return workload;
+  return 0;
 }
 
 /**
@@ -171,7 +186,7 @@ export function formatWorkloadRecord(record: BitableRecord): FormattedWorkloadRe
     content,
     detail: detail || undefined,
     task: buildTaskLabel(type, content, detail || undefined),
-    workload: parseWorkloadValue(record),
+    hours: parseRecordHours(record),
     status: (record.fields['记录状态'] as string) || '未发周报',
     createdTime: record.created_time,
   };

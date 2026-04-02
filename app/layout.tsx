@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "人力占用记录 | feishu-workload-tracker-ex",
+  title: "人力占用记录EX | feishu-workload-tracker-ex",
   description: "基于飞书多维表格的三级分类人力占用记录系统",
 };
 
