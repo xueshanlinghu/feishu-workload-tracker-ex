@@ -1,6 +1,6 @@
 {
   "name": "feishu-workload-tracker-ex",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "scripts": {
     "dev": "node scripts/clean-port.js && node scripts/run-next.js dev",
