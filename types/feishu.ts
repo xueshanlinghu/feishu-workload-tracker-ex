@@ -118,6 +118,7 @@ export interface CategoryOption {
 export interface CategoryResponse {
   items: CategoryOption[];
   total: number;
+  requiresContent?: boolean;
   requiresDetail?: boolean;
 }
 
@@ -129,7 +130,7 @@ export interface SubmitWorkloadData {
   personId: string;
   records: Array<{
     typeRecordId: string;
-    contentRecordId: string;
+    contentRecordId?: string;
     detailRecordId?: string;
     hours: number;
   }>;

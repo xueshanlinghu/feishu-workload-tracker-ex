@@ -15,8 +15,11 @@ import HoursMoodIcon, { getHoursMoodTone } from './HoursMoodIcon';
 import WorkloadSelector from './WorkloadSelector';
 import {
   formatHoursValue,
+  getMaxRecordHoursForType,
   getDailyHoursStatus,
+  hasFullDayLeaveConflict,
   hoursToWorkloadRatio,
+  isLeaveType,
   MAX_DAILY_HOURS,
   STANDARD_WORKDAY_HOURS,
 } from '@/lib/work-hours';
@@ -27,11 +30,13 @@ interface EditRecordModalProps {
   record: {
     id: string;
     task: string;
+    type?: string;
     hours: number;
   } | null;
   onSuccess: () => void;
   onError: (error: string) => void;
   currentTotalHours: number; // 当前日期的总工时
+  currentLeaveHours: number; // 当前日期休假类型累计工时
 }
 
 export default function EditRecordModal({
@@ -41,16 +46,18 @@ export default function EditRecordModal({
   onSuccess,
   onError,
   currentTotalHours,
+  currentLeaveHours,
 }: EditRecordModalProps) {
   const [hours, setHours] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [useCompactLayout, setUseCompactLayout] = useState(false);
+  const maxHoursForRecordType = getMaxRecordHoursForType(record?.type);
 
   useEffect(() => {
     if (isOpen && record) {
-      setHours(record.hours);
+      setHours(Math.min(record.hours, maxHoursForRecordType));
     }
-  }, [isOpen, record]);
+  }, [isOpen, maxHoursForRecordType, record]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -80,8 +87,14 @@ export default function EditRecordModal({
   const newTotalHours = record
     ? currentTotalHours - record.hours + hours
     : currentTotalHours;
+  const isLeaveRecord = isLeaveType(record?.type);
+  const newLeaveTotalHours =
+    record && isLeaveRecord ? currentLeaveHours - record.hours + hours : currentLeaveHours;
   const totalHoursStatus = getDailyHoursStatus(newTotalHours);
   const isOverLimit = newTotalHours > MAX_DAILY_HOURS;
+  const isLeaveOverLimit = isLeaveRecord && newLeaveTotalHours > maxHoursForRecordType;
+  const hasFullDayLeaveRuleConflict = hasFullDayLeaveConflict(newTotalHours, newLeaveTotalHours);
+  const hasBlockingEditIssue = isOverLimit || isLeaveOverLimit || hasFullDayLeaveRuleConflict;
   const isOverStandardHours = newTotalHours > STANDARD_WORKDAY_HOURS;
   const hoursChange = record ? hours - record.hours : 0;
   const moodTone = hours > 0 ? getHoursMoodTone(hours) : null;
@@ -173,8 +186,14 @@ export default function EditRecordModal({
             value={hours}
             onChange={setHours}
             disabled={isSubmitting}
+            maxHours={maxHoursForRecordType}
             mode={useCompactLayout ? 'dropdown' : 'inline'}
           />
+          {maxHoursForRecordType < MAX_DAILY_HOURS && (
+            <p className="mt-3 text-sm text-amber-600">
+              “{record.type || '当前类型'}” 单条记录最多只能填写 {maxHoursForRecordType} 小时。
+            </p>
+          )}
         </div>
 
         <div className={`mb-6 space-y-3 rounded-2xl border p-5 ${summaryCardClass}`}>
@@ -222,7 +241,7 @@ export default function EditRecordModal({
             </span>
           </div>
 
-          {!isOverLimit && isOverStandardHours && (
+          {!hasBlockingEditIssue && isOverStandardHours && (
             <div className="flex items-start gap-2 rounded-2xl border border-orange-200 bg-white/70 p-3">
               <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -231,6 +250,34 @@ export default function EditRecordModal({
                 <p className="text-sm font-medium text-orange-800">已超过 8 小时标准工时</p>
                 <p className="mt-1 text-xs text-orange-700">
                   修改后总工时为 {formatHoursValue(newTotalHours)} 小时，仍可保存，但请留意当天安排。
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isLeaveOverLimit && (
+            <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3">
+              <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-800">休假累计工时超过限制</p>
+                <p className="mt-1 text-xs text-red-600">
+                  当天“{record.type || '休假'}”累计将达到 {formatHoursValue(newLeaveTotalHours)} 小时，超过 {maxHoursForRecordType} 小时上限，无法保存。
+                </p>
+              </div>
+            </div>
+          )}
+
+          {hasFullDayLeaveRuleConflict && (
+            <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-3">
+              <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-800">休假已占满 1 天</p>
+                <p className="mt-1 text-xs text-red-600">
+                  当天休假累计达到 {maxHoursForRecordType} 小时后，不允许再同时保留其他工作事项。
                 </p>
               </div>
             </div>
@@ -261,7 +308,7 @@ export default function EditRecordModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || hours === 0 || isOverLimit}
+            disabled={isSubmitting || hours === 0 || hasBlockingEditIssue}
             className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? '更新中...' : '确认更新'}

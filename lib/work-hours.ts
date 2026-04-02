@@ -7,6 +7,7 @@
 export const STANDARD_WORKDAY_HOURS = 8;
 export const MAX_DAILY_HOURS = 14;
 export const MIN_RECORD_HOURS = 1;
+export const LEAVE_TYPE_NAME = '休假';
 export type DailyHoursStatus = 'healthy' | 'warning' | 'danger';
 
 /**
@@ -30,6 +31,41 @@ export function formatHoursValue(hours: number): string {
  */
 export function isValidRecordHours(value: number): boolean {
   return Number.isInteger(value) && value >= MIN_RECORD_HOURS && value <= MAX_DAILY_HOURS;
+}
+
+/**
+ * 获取指定类型允许录入的单条最大工时。
+ *
+ * 当前只有“休假”需要限制在 8 小时以内，其他类型保持 14 小时上限。
+ */
+export function getMaxRecordHoursForType(typeName?: string): number {
+  if ((typeName || '').trim() === LEAVE_TYPE_NAME) {
+    return STANDARD_WORKDAY_HOURS;
+  }
+
+  return MAX_DAILY_HOURS;
+}
+
+/**
+ * 判断当前类型是否属于休假类记录。
+ */
+export function isLeaveType(typeName?: string): boolean {
+  return getMaxRecordHoursForType(typeName) === STANDARD_WORKDAY_HOURS;
+}
+
+/**
+ * 判断是否出现“休假满 8 小时，但当天仍存在其他工作事项”的冲突。
+ *
+ * 规则解释：
+ * - 休假可以是 1-8 小时
+ * - 当天所有休假累计达到 8 小时时，意味着已经占满 1 个完整工作日
+ * - 此时不允许当天再出现其他非休假工时
+ */
+export function hasFullDayLeaveConflict(
+  totalHours: number,
+  leaveHours: number
+): boolean {
+  return leaveHours === STANDARD_WORKDAY_HOURS && totalHours > STANDARD_WORKDAY_HOURS;
 }
 
 /**
