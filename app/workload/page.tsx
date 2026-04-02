@@ -932,7 +932,7 @@ function WorkloadPageContent() {
                   key={record.id}
                   className="bg-gray-50 p-4 rounded-xl border border-gray-200 hover:border-blue-300 transition-colors duration-200"
                 >
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_auto_auto] xl:items-start 2xl:grid-cols-[minmax(210px,0.9fr)_minmax(320px,1.35fr)_minmax(320px,1.35fr)_auto_auto]">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(140px,0.85fr)_minmax(180px,1.15fr)_minmax(180px,1.15fr)_minmax(160px,0.95fr)_auto] lg:items-start 2xl:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.25fr)_minmax(260px,1.25fr)_minmax(210px,0.95fr)_auto]">
                     <CustomSelect
                       label="类型"
                       value={record.typeRecordId}
@@ -988,7 +988,7 @@ function WorkloadPageContent() {
                       searchable={true}
                       showIcon={true}
                     />
-                    <div className="xl:pt-8">
+                    <div className="lg:pt-8 min-w-0">
                       <WorkloadSelector
                         value={record.hours}
                         onChange={(value) => handleHoursChange(record.id, value)}
@@ -996,7 +996,7 @@ function WorkloadPageContent() {
                         mode="dropdown"
                       />
                     </div>
-                    <div className="xl:pt-8">
+                    <div className="lg:pt-8 lg:flex lg:justify-end">
                       <button
                         onClick={() => removeRecord(record.id)}
                         className="px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors duration-200 font-medium"

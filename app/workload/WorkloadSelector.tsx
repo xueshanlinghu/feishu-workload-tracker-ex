@@ -140,7 +140,7 @@ export default function WorkloadSelector({
   }
 
   return (
-    <Popover className="relative w-full min-w-[230px]">
+    <Popover className="relative w-full min-w-0">
       {({ open, close }) => (
         <>
           <Popover.Button

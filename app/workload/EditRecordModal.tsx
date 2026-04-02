@@ -44,12 +44,38 @@ export default function EditRecordModal({
 }: EditRecordModalProps) {
   const [hours, setHours] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [useCompactLayout, setUseCompactLayout] = useState(false);
 
   useEffect(() => {
     if (isOpen && record) {
       setHours(record.hours);
     }
   }, [isOpen, record]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 1280px), (max-height: 900px)');
+    const updateLayoutMode = () => {
+      setUseCompactLayout(mediaQuery.matches);
+    };
+
+    updateLayoutMode();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateLayoutMode);
+      return () => {
+        mediaQuery.removeEventListener('change', updateLayoutMode);
+      };
+    }
+
+    mediaQuery.addListener(updateLayoutMode);
+    return () => {
+      mediaQuery.removeListener(updateLayoutMode);
+    };
+  }, []);
 
   const newTotalHours = record
     ? currentTotalHours - record.hours + hours
@@ -116,16 +142,16 @@ export default function EditRecordModal({
   if (!isOpen || !record) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-xl">
-        <div className="mb-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div className="w-full max-w-[min(96vw,44rem)] max-h-[calc(100vh-1rem)] overflow-y-auto overscroll-contain rounded-[28px] bg-white p-4 shadow-xl sm:max-h-[calc(100vh-2rem)] sm:p-6">
+        <div className="mb-4 flex items-start justify-between gap-4 sm:mb-6">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">编辑记录</h2>
+            <h2 className="text-lg font-bold text-gray-900 sm:text-xl">编辑记录</h2>
             <p className="mt-1 text-sm text-gray-500">调整该事项的工时并实时校验当天上限</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 transition-colors hover:text-gray-600"
+            className="flex-shrink-0 text-gray-400 transition-colors hover:text-gray-600"
             aria-label="关闭"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,7 +162,7 @@ export default function EditRecordModal({
 
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-gray-700">分类路径</label>
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 break-words">
             {record.task}
           </div>
         </div>
@@ -147,13 +173,14 @@ export default function EditRecordModal({
             value={hours}
             onChange={setHours}
             disabled={isSubmitting}
+            mode={useCompactLayout ? 'dropdown' : 'inline'}
           />
         </div>
 
         <div className={`mb-6 space-y-3 rounded-2xl border p-5 ${summaryCardClass}`}>
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm text-gray-600">新的工时值：</span>
-            <span className="flex items-center gap-3">
+            <span className="flex items-center gap-3 sm:justify-end">
               {moodTone && (
                 <HoursMoodIcon hours={hours} active={true} size={18} className="h-10 w-10" />
               )}
@@ -169,7 +196,7 @@ export default function EditRecordModal({
           </div>
 
           {hoursChange !== 0 && (
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-sm text-gray-600">工时变动：</span>
               <span
                 className={`text-sm font-semibold ${
@@ -182,7 +209,7 @@ export default function EditRecordModal({
             </div>
           )}
 
-          <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+          <div className="flex flex-col gap-2 border-t border-gray-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm font-medium text-gray-700">修改后总工时：</span>
             <span className="text-right text-lg font-bold">
               <span className="block">
@@ -224,7 +251,7 @@ export default function EditRecordModal({
           )}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
           <button
             onClick={onClose}
             disabled={isSubmitting}
