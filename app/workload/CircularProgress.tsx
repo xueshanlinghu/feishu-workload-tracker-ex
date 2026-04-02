@@ -21,7 +21,7 @@ interface CircularProgressProps {
   current: number;
   /** 百分比基准小时数，当前页面使用 8 小时作为 100% */
   max: number;
-  /** 每次刷新时递增，用于触发圆环转一圈的动画 */
+  /** 每次刷新时递增，用于触发圆环重绘动画 */
   refreshToken?: number;
   /** 圆环大小 */
   size?: number;
@@ -43,11 +43,11 @@ export default function CircularProgress({
   const circumference = 2 * Math.PI * radius;
   const targetBaseProgress = Math.min(current / safeMax, 1);
   const targetOverflowProgress = Math.min(Math.max(current - safeMax, 0) / safeMax, 1);
+  const targetTotalProgress = targetBaseProgress + targetOverflowProgress;
   const animationFrameRef = useRef<number | null>(null);
-  const [displayedBaseProgress, setDisplayedBaseProgress] = useState(targetBaseProgress);
-  const [displayedOverflowProgress, setDisplayedOverflowProgress] = useState(
-    targetOverflowProgress
-  );
+  const [displayedTotalProgress, setDisplayedTotalProgress] = useState(targetTotalProgress);
+  const displayedBaseProgress = Math.min(displayedTotalProgress, 1);
+  const displayedOverflowProgress = Math.max(displayedTotalProgress - 1, 0);
   const baseOffset = circumference - displayedBaseProgress * circumference;
   const overflowOffset = circumference - displayedOverflowProgress * circumference;
   const hasOverflow = targetOverflowProgress > 0 || displayedOverflowProgress > 0;
@@ -81,8 +81,7 @@ export default function CircularProgress({
     }
 
     if (refreshToken <= 0) {
-      setDisplayedBaseProgress(targetBaseProgress);
-      setDisplayedOverflowProgress(targetOverflowProgress);
+      setDisplayedTotalProgress(targetTotalProgress);
       return;
     }
 
@@ -91,45 +90,29 @@ export default function CircularProgress({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (prefersReducedMotion) {
-      setDisplayedBaseProgress(targetBaseProgress);
-      setDisplayedOverflowProgress(targetOverflowProgress);
+      setDisplayedTotalProgress(targetTotalProgress);
       return;
     }
 
-    setDisplayedBaseProgress(0);
-    setDisplayedOverflowProgress(0);
-    const baseDuration = 900;
-    const overflowDuration = targetOverflowProgress > 0 ? 500 : 0;
-    const totalDuration = baseDuration + overflowDuration;
+    setDisplayedTotalProgress(0);
+    const totalDuration = 3000;
 
-    const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
+    const easeOutQuart = (progress: number) => 1 - Math.pow(1 - progress, 4);
 
     const step = (startTime: number, now: number) => {
       const elapsed = now - startTime;
-      const clampedBaseProgress = Math.min(elapsed / baseDuration, 1);
-      const easedBaseProgress = easeOutCubic(clampedBaseProgress);
+      const clampedProgress = Math.min(elapsed / totalDuration, 1);
+      const easedProgress = easeOutQuart(clampedProgress);
+      setDisplayedTotalProgress(targetTotalProgress * easedProgress);
 
-      setDisplayedBaseProgress(targetBaseProgress * easedBaseProgress);
-
-      if (targetOverflowProgress > 0) {
-        const overflowElapsed = Math.max(elapsed - baseDuration, 0);
-        const clampedOverflowProgress = Math.min(
-          overflowDuration > 0 ? overflowElapsed / overflowDuration : 1,
-          1
-        );
-        const easedOverflowProgress = easeOutCubic(clampedOverflowProgress);
-        setDisplayedOverflowProgress(targetOverflowProgress * easedOverflowProgress);
-      }
-
-      if (elapsed < totalDuration) {
+      if (clampedProgress < 1) {
         animationFrameRef.current = window.requestAnimationFrame((nextNow) =>
           step(startTime, nextNow)
         );
         return;
       }
 
-      setDisplayedBaseProgress(targetBaseProgress);
-      setDisplayedOverflowProgress(targetOverflowProgress);
+      setDisplayedTotalProgress(targetTotalProgress);
       animationFrameRef.current = null;
     };
 
@@ -143,10 +126,10 @@ export default function CircularProgress({
         animationFrameRef.current = null;
       }
     };
-  }, [refreshToken, targetBaseProgress, targetOverflowProgress]);
+  }, [refreshToken, targetTotalProgress]);
 
   const baseStrokeLinecap =
-    targetOverflowProgress > 0 && displayedBaseProgress >= 0.999 ? 'butt' : 'round';
+    displayedOverflowProgress > 0.001 ? 'butt' : 'round';
 
   return (
     <div className="relative inline-flex items-center justify-center">
