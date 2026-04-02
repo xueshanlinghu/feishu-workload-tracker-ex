@@ -41,18 +41,6 @@ function extractPersonId(value: unknown): string | null {
 }
 
 /**
- * 将飞书时间戳转换成 YYYY-MM-DD
- *
- * 飞书日期字段返回的是本地日期零点时间戳，需要减去时区偏移后再转为字符串。
- */
-function formatRecordDate(recordDate: number): string {
-  const dateObj = new Date(recordDate);
-  const timezoneOffset = dateObj.getTimezoneOffset() * 60 * 1000;
-  const localTimestamp = recordDate - timezoneOffset;
-  return new Date(localTimestamp).toISOString().split('T')[0];
-}
-
-/**
  * GET - 查询记录
  */
 export async function GET(request: NextRequest) {
@@ -273,8 +261,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const dateStr = formatRecordDate(recordDate);
-    const personRecords = await queryRecordsByDateAndPerson(dateStr, personId);
+    const personRecords = await queryRecordsByDateAndPerson(recordDate, personId);
 
     const existingTotal = personRecords
       .filter((record) => record.record_id !== recordId)
