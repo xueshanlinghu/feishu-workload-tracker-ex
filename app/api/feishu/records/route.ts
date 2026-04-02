@@ -15,10 +15,11 @@ import {
 } from '@/lib/feishu/bitable';
 import {
   getFormattedWorkloadRecordsByDateAndPerson,
-  parseWorkloadValue,
+  parseRecordHours,
   resolveCategorySelection,
 } from '@/lib/feishu/workload';
 import { getCurrentUser, isSessionValid } from '@/lib/session';
+import { isValidRecordHours, MAX_DAILY_HOURS } from '@/lib/work-hours';
 import { BitableRecord, SubmitWorkloadData } from '@/types/feishu';
 
 /**
@@ -65,11 +66,11 @@ export async function GET(request: NextRequest) {
     }
 
     const records = await getFormattedWorkloadRecordsByDateAndPerson(date, personId);
-    const totalWorkload = records.reduce((sum, record) => sum + record.workload, 0);
+    const totalHours = records.reduce((sum, record) => sum + record.hours, 0);
 
     return NextResponse.json({
       records,
-      total: totalWorkload,
+      totalHours,
       count: records.length,
     });
   } catch (error) {
@@ -119,29 +120,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const invalidWorkload = records.some(
-      (record) => typeof record.workload !== 'number' || record.workload <= 0 || record.workload > 1
+    const invalidHours = records.some(
+      (record) => typeof record.hours !== 'number' || !isValidRecordHours(record.hours)
     );
-    if (invalidWorkload) {
+    if (invalidHours) {
       return NextResponse.json(
-        { error: '人力占用值必须在 0-1 之间，且不能为 0' },
+        { error: `单条记录工时必须是 ${MAX_DAILY_HOURS} 小时以内的整数，且不能小于 1 小时` },
         { status: 400 }
       );
     }
 
     const existingRecords = await queryRecordsByDateAndPerson(date, personId);
-    const existingTotal = existingRecords.reduce(
-      (sum, record) => sum + parseWorkloadValue(record),
+    const existingTotalHours = existingRecords.reduce(
+      (sum, record) => sum + parseRecordHours(record),
       0
     );
-    const newTotal = records.reduce((sum, record) => sum + record.workload, 0);
-    const finalTotal = existingTotal + newTotal;
+    const newTotalHours = records.reduce((sum, record) => sum + record.hours, 0);
+    const finalTotalHours = existingTotalHours + newTotalHours;
 
-    if (finalTotal > 1.0) {
+    if (finalTotalHours > MAX_DAILY_HOURS) {
       return NextResponse.json(
         {
-          error: '总人力占用超出限制',
-          detail: `已有人力 ${existingTotal.toFixed(1)} + 新增人力 ${newTotal.toFixed(1)} = ${finalTotal.toFixed(1)} > 1.0`,
+          error: '总工时超出限制',
+          detail: `已录入 ${existingTotalHours} 小时 + 新增 ${newTotalHours} 小时 = ${finalTotalHours} 小时，超过 ${MAX_DAILY_HOURS} 小时上限`,
         },
         { status: 400 }
       );
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
         记录人员: [{ id: personId }],
         类型: resolvedCategory.typeName,
         内容: resolvedCategory.contentName,
-        人力占用: Math.round(record.workload * 10),
+        人力占用小时数: record.hours,
         记录状态: '未发周报',
         创建人: [{ id: currentUser.openId }],
       };
@@ -227,7 +228,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { recordId, workload } = body;
+    const { recordId, hours } = body;
 
     if (!recordId) {
       return NextResponse.json(
@@ -236,9 +237,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (typeof workload !== 'number' || workload <= 0 || workload > 1) {
+    if (typeof hours !== 'number' || !isValidRecordHours(hours)) {
       return NextResponse.json(
-        { error: '人力占用值必须在 0-1 之间，且不能为 0' },
+        { error: `工时必须是 ${MAX_DAILY_HOURS} 小时以内的整数，且不能小于 1 小时` },
         { status: 400 }
       );
     }
@@ -263,22 +264,22 @@ export async function PATCH(request: NextRequest) {
 
     const personRecords = await queryRecordsByDateAndPerson(recordDate, personId);
 
-    const existingTotal = personRecords
+    const existingTotalHours = personRecords
       .filter((record) => record.record_id !== recordId)
-      .reduce((sum, record) => sum + parseWorkloadValue(record), 0);
+      .reduce((sum, record) => sum + parseRecordHours(record), 0);
 
-    if (existingTotal + workload > 1.0) {
+    if (existingTotalHours + hours > MAX_DAILY_HOURS) {
       return NextResponse.json(
         {
-          error: '总人力占用超出限制',
-          detail: `该日期其他记录占用 ${existingTotal.toFixed(1)}，更新后将达到 ${(existingTotal + workload).toFixed(1)} > 1.0`,
+          error: '总工时超出限制',
+          detail: `该日期其他记录已占用 ${existingTotalHours} 小时，更新后将达到 ${existingTotalHours + hours} 小时，超过 ${MAX_DAILY_HOURS} 小时上限`,
         },
         { status: 400 }
       );
     }
 
     const updated = await updateRecord(recordId, {
-      人力占用: Math.round(workload * 10),
+      人力占用小时数: hours,
     });
 
     return NextResponse.json({

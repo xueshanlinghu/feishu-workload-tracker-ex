@@ -99,7 +99,7 @@ export interface WorkloadRecord {
   类型: string;
   内容: string;
   细项?: string;
-  人力占用: number; // 0.1 - 1.0
+  人力占用小时数: number; // 1 - 14 小时
   记录状态?: string;
   创建人?: string;
 }
@@ -131,6 +131,6 @@ export interface SubmitWorkloadData {
     typeRecordId: string;
     contentRecordId: string;
     detailRecordId?: string;
-    workload: number;
+    hours: number;
   }>;
 }

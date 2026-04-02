@@ -243,7 +243,7 @@ export async function queryRecordsByDateAndPerson(
           '类型',
           '内容',
           '细项',
-          '人力占用',
+          '人力占用小时数',
           '人力占用计算',
           '记录状态',
         ],

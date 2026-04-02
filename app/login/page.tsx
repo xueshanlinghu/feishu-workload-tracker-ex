@@ -62,7 +62,7 @@ function LoginForm() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-3">
-            人力占用记录系统
+            工时记录系统
           </h1>
           <p className="text-gray-600 font-medium">
             使用飞书账号安全登录
