@@ -8,7 +8,7 @@
 
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Popover, Transition } from '@headlessui/react';
 import { ChevronsUpDown } from 'lucide-react';
 import HoursMoodIcon, { getHoursMoodTone } from './HoursMoodIcon';
@@ -121,6 +121,55 @@ function PickerContent({
   );
 }
 
+interface DropdownPanelProps extends PickerContentProps {
+  open: boolean;
+  direction: 'down' | 'up';
+  calculateDropdownLayout: () => void;
+}
+
+function DropdownPanel({
+  open,
+  direction,
+  calculateDropdownLayout,
+  value,
+  onChange,
+  disabled,
+  onSelect,
+}: DropdownPanelProps) {
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    calculateDropdownLayout();
+  }, [calculateDropdownLayout, open]);
+
+  return (
+    <Transition
+      as={Fragment}
+      enter="transition ease-out duration-150"
+      enterFrom={`opacity-0 ${direction === 'down' ? 'translate-y-1' : '-translate-y-1'} scale-95`}
+      enterTo="opacity-100 translate-y-0 scale-100"
+      leave="transition ease-in duration-100"
+      leaveFrom="opacity-100 translate-y-0 scale-100"
+      leaveTo={`opacity-0 ${direction === 'down' ? 'translate-y-1' : '-translate-y-1'} scale-95`}
+    >
+      <Popover.Panel
+        className={`absolute right-0 z-30 w-[24rem] max-w-[calc(100vw-2rem)] rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl ${
+          direction === 'down' ? 'mt-2' : 'bottom-full mb-2'
+        }`}
+      >
+        <PickerContent
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          onSelect={onSelect}
+        />
+      </Popover.Panel>
+    </Transition>
+  );
+}
+
 export default function WorkloadSelector({
   value,
   onChange,
@@ -128,6 +177,42 @@ export default function WorkloadSelector({
   mode = 'inline',
 }: WorkloadSelectorProps) {
   const selectedTone = value > 0 ? getHoursMoodTone(value) : null;
+  const [dropdownDirection, setDropdownDirection] = useState<'down' | 'up'>('down');
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // 让工时下拉和左侧选择框保持一致：优先向下展开，空间不足时改为向上弹出
+  const calculateDropdownLayout = useCallback(() => {
+    if (typeof window === 'undefined' || !buttonRef.current) {
+      return;
+    }
+
+    const rect = buttonRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const estimatedDropdownHeight = 360;
+
+    if (spaceBelow < estimatedDropdownHeight && rect.top > estimatedDropdownHeight) {
+      setDropdownDirection('up');
+      return;
+    }
+
+    setDropdownDirection('down');
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'dropdown') {
+      return;
+    }
+
+    const handleResize = () => {
+      calculateDropdownLayout();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [calculateDropdownLayout, mode]);
 
   if (mode === 'inline') {
     return (
@@ -144,6 +229,13 @@ export default function WorkloadSelector({
       {({ open, close }) => (
         <>
           <Popover.Button
+            ref={buttonRef}
+            onMouseDown={calculateDropdownLayout}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                calculateDropdownLayout();
+              }
+            }}
             disabled={disabled}
             className={`relative flex h-[50px] w-full items-center rounded-xl border bg-white px-4 text-left transition-all duration-200 ${
               disabled
@@ -190,24 +282,15 @@ export default function WorkloadSelector({
             </span>
           </Popover.Button>
 
-          <Transition
-            as={Fragment}
-            enter="transition ease-out duration-150"
-            enterFrom="opacity-0 translate-y-1 scale-95"
-            enterTo="opacity-100 translate-y-0 scale-100"
-            leave="transition ease-in duration-100"
-            leaveFrom="opacity-100 translate-y-0 scale-100"
-            leaveTo="opacity-0 translate-y-1 scale-95"
-          >
-            <Popover.Panel className="absolute right-0 z-30 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl">
-              <PickerContent
-                value={value}
-                onChange={onChange}
-                disabled={disabled}
-                onSelect={close}
-              />
-            </Popover.Panel>
-          </Transition>
+          <DropdownPanel
+            open={open}
+            direction={dropdownDirection}
+            calculateDropdownLayout={calculateDropdownLayout}
+            value={value}
+            onChange={onChange}
+            disabled={disabled}
+            onSelect={close}
+          />
         </>
       )}
     </Popover>
